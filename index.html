@@ -1774,8 +1774,30 @@ function almTomarPedido(folio) {
     if (!loginRes.ok || (loginRes.rol !== 'surtidor' && loginRes.rol !== 'admin')) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
-    const res = await api('tomarPedido', {folio, surtidor: usuario});
     hideLoading();
+
+    // Verificar FIFO — solo admin puede saltarse la cola
+    if (loginRes.rol !== 'admin') {
+      const cola = buildGlobalQueue();
+      const siguiente = cola[0];
+      if (!siguiente || siguiente.type !== 'pedido' || siguiente.id !== folio) {
+        const sigLabel = siguiente ? (siguiente.type==='pedido' ? siguiente.folio : 'Línea '+siguiente.id) : '—';
+        almPedirAutorizacionAdmin(folio, sigLabel, usuario, async (adminPass) => {
+          showLoading('Autorizando...');
+          const adminRes = await api('login', {usuario:'admin', password: adminPass});
+          if (!adminRes.ok || adminRes.rol !== 'admin') {
+            hideLoading(); toast('Autorización incorrecta', 'error'); return;
+          }
+          const res2 = await api('tomarPedido', {folio, surtidor: usuario});
+          hideLoading();
+          if (res2.ok) { toast('Pedido ' + folio + ' autorizado y asignado a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
+          else toast(res2.error, 'error');
+        });
+        return;
+      }
+    }
+
+    const res = await api('tomarPedido', {folio, surtidor: usuario});
     if (res.ok) { toast('Pedido ' + folio + ' asignado a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
     else toast(res.error, 'error');
   });
@@ -1828,18 +1850,63 @@ function almSurtirPedido(folio, surtidorAsignado) {
 }
 
 function almTomarLinea(id) {
-  const linea = ALL_LINEAS.find(l => l.id === id);
   almPedirClave('¿Quién toma esta línea?', async (usuario, pass) => {
     showLoading('Verificando...');
     const loginRes = await api('login', {usuario, password: pass});
     if (!loginRes.ok || (loginRes.rol !== 'surtidor' && loginRes.rol !== 'admin')) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
-    const res = await api('tomarLinea', {id, surtidor: usuario});
     hideLoading();
-    if (res.ok) { toast('Línea asignada a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
+    if (loginRes.rol !== 'admin') {
+      const cola = buildGlobalQueue();
+      const siguiente = cola[0];
+      if (!siguiente || siguiente.type !== 'linea' || siguiente.id !== id) {
+        const sigLabel = siguiente ? (siguiente.type==='pedido' ? siguiente.folio : 'Linea '+siguiente.id) : 'ninguno';
+        almPedirAutorizacionAdmin('Linea '+id, sigLabel, usuario, async (adminPass) => {
+          showLoading('Autorizando...');
+          const adminRes = await api('login', {usuario:'admin', password: adminPass});
+          if (!adminRes.ok || adminRes.rol !== 'admin') {
+            hideLoading(); toast('Autorización incorrecta', 'error'); return;
+          }
+          const res2 = await api('tomarLinea', {id, surtidor: usuario});
+          hideLoading();
+          if (res2.ok) { toast('Linea autorizada y asignada a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
+          else toast(res2.error, 'error');
+        });
+        return;
+      }
+    }
+    const res = await api('tomarLinea', {id, surtidor: usuario});
+    if (res.ok) { toast('Linea asignada a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
     else toast(res.error, 'error');
   });
+}
+
+function almPedirAutorizacionAdmin(item, siguiente, surtidor, callback) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--surface);border-radius:12px;padding:28px;max-width:380px;width:90%;box-shadow:var(--shadow-lg);text-align:center;">
+    <div style="font-size:32px;margin-bottom:10px;">🔒</div>
+    <div style="font-weight:700;font-size:17px;margin-bottom:8px;">Autorización requerida</div>
+    <div style="font-size:13px;color:var(--ink3);margin-bottom:4px;">El siguiente en cola es <strong style="color:var(--accent)">${siguiente}</strong></div>
+    <div style="font-size:13px;color:var(--ink3);margin-bottom:20px;">Para adelantar <strong>${item}</strong> se necesita clave admin.</div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);margin-bottom:6px;">Contraseña Admin</div>
+    <input type="password" id="alm-admin-pass" placeholder="Contraseña admin"
+      style="width:100%;padding:10px 14px;border-radius:var(--radius);border:1.5px solid var(--border);background:var(--surface2);color:var(--ink);font-size:15px;box-sizing:border-box;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" style="flex:1;" id="alm-admin-ok">✔ Autorizar</button>
+      <button class="btn btn-ghost" onclick="this.closest('div[style*=fixed]').remove()">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#alm-admin-ok').onclick = () => {
+    const p = overlay.querySelector('#alm-admin-pass').value;
+    if (!p) return;
+    overlay.remove();
+    callback(p);
+  };
+  overlay.querySelector('#alm-admin-pass').addEventListener('keydown', e => { if(e.key==='Enter') overlay.querySelector('#alm-admin-ok').click(); });
+  setTimeout(() => overlay.querySelector('input')?.focus(), 100);
 }
 
 function almElegirRack(folio, surtidor) {
