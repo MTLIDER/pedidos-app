@@ -1820,6 +1820,17 @@ function almTomarPedido(folio) {
     }
     hideLoading();
 
+    // Verificar que el surtidor no tenga un pedido/línea en curso (surtiendo)
+    if (loginRes.rol !== 'admin') {
+      const enCurso = ALL_PEDIDOS.find(x => x.surtidor === usuario && x.status === 'surtiendo') ||
+                      ALL_LINEAS.find(x => x.surtidor === usuario && x.status === 'surtiendo');
+      if (enCurso) {
+        const label = enCurso.folio ? `pedido ${enCurso.folio}` : `línea ${enCurso.id}`;
+        toast(`${loginRes.nombre} ya tiene el ${label} en curso — ciérralo antes de tomar otro`, 'error');
+        return;
+      }
+    }
+
     // Verificar FIFO — solo admin puede saltarse la cola
     if (loginRes.rol !== 'admin') {
       const cola = buildGlobalQueue();
@@ -1901,6 +1912,15 @@ function almTomarLinea(id) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
     hideLoading();
+    if (loginRes.rol !== 'admin') {
+      const enCurso = ALL_PEDIDOS.find(x => x.surtidor === usuario && x.status === 'surtiendo') ||
+                      ALL_LINEAS.find(x => x.surtidor === usuario && x.status === 'surtiendo');
+      if (enCurso) {
+        const label = enCurso.folio && enCurso.status ? `pedido ${enCurso.folio}` : `línea`;
+        toast(`${loginRes.nombre} ya tiene un ${label} en curso — ciérralo antes de tomar otro`, 'error');
+        return;
+      }
+    }
     if (loginRes.rol !== 'admin') {
       const cola = buildGlobalQueue();
       const siguiente = cola[0];
