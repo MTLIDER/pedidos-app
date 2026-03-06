@@ -758,6 +758,10 @@ function buildNav() {
   const tabs=document.getElementById('nav-tabs');
   tabs.innerHTML=nav.map(n=>`<button class="btn-sm" data-panel="${n.panel}" onclick="switchPanel('${n.panel}')">${n.label}</button>`).join('');
   switchPanel(nav[0].panel);
+  // Force load for almacen role
+  if (SESSION.rol === 'almacen') {
+    setTimeout(async () => { await cargarPedidos(); renderAlmacen(); }, 500);
+  }
   if (!SHEETS_URL) toast('Modo demo activo. Configura Google Sheets en Admin.','info',6000);
 }
 
