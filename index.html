@@ -519,7 +519,11 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font-body);min-heig
         <button class="filter-tab" id="alm-tab-surtiendo" onclick="almSetFilter('surtiendo')">Surtiendo</button>
         <button class="filter-tab" id="alm-tab-surtido" onclick="almSetFilter('surtido')">Surtido</button>
         <button class="filter-tab" id="alm-tab-enviado" onclick="almSetFilter('enviado')">Enviado</button>
-        <button class="btn btn-ghost" style="font-size:12px;margin-left:auto;" onclick="cargarPedidos()">↺ Actualizar</button>
+        <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+        <button id="alm-btn-grid" class="btn btn-primary" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('grid')" title="Tarjetas">⊞</button>
+        <button id="alm-btn-list" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('list')" title="Lista">☰</button>
+        <button class="btn btn-ghost" style="font-size:12px;" onclick="cargarPedidos()">↺ Actualizar</button>
+      </div>
       </div>
       <div id="almacen-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;"></div>
     </div>
@@ -799,7 +803,7 @@ function switchPanel(name) {
     if (SESSION.rol==='surtidor') FILTER_STATUS='porsurtir'; else FILTER_STATUS='todos';
     cargarPedidos();
   }
-  if (name==='nuevo') { cargarFolioPreview(); setTimeout(attachClienteKeyboard,100); }
+  if (name==='nuevo') { cargarFolioPreview(); loadClientes(); setTimeout(attachClienteKeyboard,100); }
   if (name==='reporte') generarReporte();
   if (name==='almacen') {
     ALM_FILTER='todos';
@@ -1261,7 +1265,7 @@ async function cargarFolioPreview() {
 async function loadClientes(){const res=await api('getClientes');if(res.ok)CLIENT_CACHE=res.clientes||[];}
 function autocompleteCliente(val){
   const list=document.getElementById('ac-list');
-  if (!val||val.length<2){list.classList.remove('open');return;}
+  if (!val||val.length<1){list.classList.remove('open');return;}
   const matches=CLIENT_CACHE.filter(c=>c.toLowerCase().includes(val.toLowerCase())).slice(0,8);
   if (!matches.length){list.classList.remove('open');return;}
   list.innerHTML=matches.map(c=>`<div class="autocomplete-item" onclick="selectCliente('${c.replace(/'/g,"\\'")}')">${c}</div>`).join('');
@@ -1633,6 +1637,16 @@ async function marcarUrgente(folio) {
 
 // ─── PANTALLA ALMACÉN ────────────────────────────────────────────────────────
 let ALM_FILTER = 'todos';
+let ALM_VISTA = 'grid';
+
+function almSetVista(v) {
+  ALM_VISTA = v;
+  document.getElementById('alm-btn-grid')?.classList.toggle('btn-primary', v==='grid');
+  document.getElementById('alm-btn-grid')?.classList.toggle('btn-ghost', v!=='grid');
+  document.getElementById('alm-btn-list')?.classList.toggle('btn-primary', v==='list');
+  document.getElementById('alm-btn-list')?.classList.toggle('btn-ghost', v!=='list');
+  renderAlmacen();
+}
 
 function almSetFilter(f) {
   ALM_FILTER = f;
@@ -1655,9 +1669,46 @@ function renderAlmacen() {
   });
   if (!pedidos.length) {
     grid.innerHTML = '<div style="color:var(--ink3);padding:40px;text-align:center;grid-column:1/-1;">No hay pedidos</div>';
+    grid.style.display = 'grid';
     return;
   }
-  grid.innerHTML = pedidos.map(p => buildAlmacenCard(p)).join('');
+  if (ALM_VISTA === 'list') {
+    grid.style.display = 'block';
+    grid.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="border-bottom:2px solid var(--border);color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">
+        <th style="padding:8px 10px;text-align:left;">Turno</th>
+        <th style="padding:8px 10px;text-align:left;">Folio</th>
+        <th style="padding:8px 10px;text-align:left;">Cliente</th>
+        <th style="padding:8px 10px;text-align:left;">Vendedor</th>
+        <th style="padding:8px 10px;text-align:left;">Estado</th>
+        <th style="padding:8px 10px;text-align:left;">Surtidor</th>
+        <th style="padding:8px 10px;text-align:left;">Acción</th>
+      </tr></thead>
+      <tbody>${pedidos.map(p => {
+        const ds = getDisplayStatus(p);
+        const badge = `<span class="badge badge-${ds}" style="font-size:10px;">${STATUS_LABELS[ds]||STATUS_LABELS[p.status]}</span>`;
+        let accion = '';
+        if (p.status==='porsurtir') accion=`<button class="btn btn-success" style="padding:4px 10px;font-size:11px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar</button>`;
+        else if (p.status==='surtiendo') accion=`<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="almSurtirPedido('${p.folio}','${p.surtidor}')">✔ Surtido</button>`;
+        const linSurt = ALL_LINEAS.filter(l=>l.folio===p.folio&&l.status==='surtiendo');
+        const linPend = ALL_LINEAS.filter(l=>l.folio===p.folio&&l.status==='porsurtir');
+        if (linPend.length) accion += linPend.map(l=>`<button class="btn btn-success" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almTomarLinea('${l.id}')">+Linea</button>`).join('');
+        if (linSurt.length) accion += linSurt.map(l=>`<button class="btn btn-primary" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almSurtirLinea('${l.id}','${l.surtidor}')">✔Linea</button>`).join('');
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px 10px;font-family:var(--font-mono);font-size:11px;">${p.turno||'—'}</td>
+          <td style="padding:8px 10px;font-weight:700;">${p.folio}</td>
+          <td style="padding:8px 10px;">${p.cliente}</td>
+          <td style="padding:8px 10px;color:var(--ink3);">${p.vendedor}</td>
+          <td style="padding:8px 10px;">${badge}</td>
+          <td style="padding:8px 10px;color:var(--ink3);">${p.surtidor||'—'}</td>
+          <td style="padding:8px 10px;">${accion}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } else {
+    grid.style.display = 'grid';
+    grid.innerHTML = pedidos.map(p => buildAlmacenCard(p)).join('');
+  }
 }
 
 function buildAlmacenCard(p) {
@@ -1678,12 +1729,24 @@ function buildAlmacenCard(p) {
     accionHtml = `<div style="font-size:12px;color:var(--green);margin-top:8px;">✔ Surtido en Rack ${p.rack} por ${p.surtidor}</div>`;
   }
 
-  // Lineas pendientes
-  const lineasPend = ALL_LINEAS.filter(l => l.folio === p.folio && l.status === 'porsurtir');
-  const lineasHtml = lineasPend.length ? `
+  // Lineas activas (porsurtir y surtiendo)
+  const lineasActivas = ALL_LINEAS.filter(l => l.folio === p.folio && (l.status === 'porsurtir' || l.status === 'surtiendo'));
+  const lineasHtml = lineasActivas.length ? `
     <div style="margin-top:10px;padding:8px;background:var(--surface2);border-radius:var(--radius);font-size:12px;">
-      📦 <strong>${lineasPend.length}</strong> línea(s) agregada(s) pendiente(s)
-      ${lineasPend.map(l=>`<div style="color:var(--ink3);margin-top:4px;">• ${l.nota} <button class="btn btn-success" style="padding:3px 8px;font-size:11px;margin-left:6px;" onclick="almTomarLinea('${l.id}')">Tomar</button></div>`).join('')}
+      📦 <strong>${lineasActivas.length}</strong> línea(s) agregada(s)
+      ${lineasActivas.map(l => {
+        if (l.status === 'porsurtir') {
+          return `<div style="color:var(--ink3);margin-top:6px;display:flex;align-items:center;gap:6px;">
+            <span>• ${l.nota}</span>
+            <button class="btn btn-success" style="padding:3px 8px;font-size:11px;" onclick="almTomarLinea('${l.id}')">Tomar</button>
+          </div>`;
+        } else {
+          return `<div style="color:var(--ink3);margin-top:6px;">
+            <div>• ${l.nota} — <strong style="color:#4a9eff">surtiendo: ${l.surtidor}</strong></div>
+            <button class="btn btn-primary" style="padding:3px 8px;font-size:11px;margin-top:4px;" onclick="almSurtirLinea('${l.id}','${l.surtidor}')">✔ Completar línea</button>
+          </div>`;
+        }
+      }).join('')}
     </div>` : '';
 
   return `<div style="background:var(--surface);border:1.5px solid ${borderColor};border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);">
@@ -1710,6 +1773,40 @@ function almTomarPedido(folio) {
     hideLoading();
     if (res.ok) { toast('Pedido ' + folio + ' asignado a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
     else toast(res.error, 'error');
+  });
+}
+
+function almSurtirLinea(id, surtidorAsignado) {
+  almPedirClave('Confirmar línea surtida — ingresa tu clave (' + surtidorAsignado + ')', async (usuario, pass) => {
+    if (usuario !== surtidorAsignado) { toast('Esta línea es de ' + surtidorAsignado, 'error'); return; }
+    showLoading('Verificando...');
+    const loginRes = await api('login', {usuario, password: pass});
+    if (!loginRes.ok) { hideLoading(); toast('Contraseña incorrecta', 'error'); return; }
+    hideLoading();
+    // Show rack selector for linea
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `<div style="background:var(--surface);border-radius:12px;padding:28px;max-width:400px;width:90%;">
+      <div style="font-weight:700;font-size:18px;margin-bottom:16px;">📍 Rack para la línea</div>
+      <div class="rack-grid" id="alm-lrack-grid">${RACKS.map(r=>`<div class="rack-btn" onclick="document.querySelectorAll('#alm-lrack-grid .rack-btn').forEach(b=>b.classList.remove('selected'));this.classList.add('selected');document.getElementById('alm-lrack-val').value='${r}'">${r}</div>`).join('')}</div>
+      <input type="hidden" id="alm-lrack-val">
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="
+          const rack=document.getElementById('alm-lrack-val').value;
+          if(!rack){return;}
+          this.closest('div[style*=fixed]').remove();
+          (async()=>{
+            showLoading('Guardando...');
+            const res=await api('surtirLinea',{id:'${id}',rack,surtidor:'${surtidorAsignado}'});
+            hideLoading();
+            if(res.ok){toast('Línea completada en Rack '+rack,'success');await cargarPedidos();renderAlmacen();}
+            else toast(res.error,'error');
+          })();
+        ">✔ Confirmar</button>
+        <button class="btn btn-ghost" onclick="this.closest('div[style*=fixed]').remove()">Cancelar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
   });
 }
 
@@ -2329,7 +2426,11 @@ body{background:var(--bg);color:var(--ink);font-family:var(--font-body);min-heig
         <button class="filter-tab" id="alm-tab-surtiendo" onclick="almSetFilter('surtiendo')">Surtiendo</button>
         <button class="filter-tab" id="alm-tab-surtido" onclick="almSetFilter('surtido')">Surtido</button>
         <button class="filter-tab" id="alm-tab-enviado" onclick="almSetFilter('enviado')">Enviado</button>
-        <button class="btn btn-ghost" style="font-size:12px;margin-left:auto;" onclick="cargarPedidos()">↺ Actualizar</button>
+        <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+        <button id="alm-btn-grid" class="btn btn-primary" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('grid')" title="Tarjetas">⊞</button>
+        <button id="alm-btn-list" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('list')" title="Lista">☰</button>
+        <button class="btn btn-ghost" style="font-size:12px;" onclick="cargarPedidos()">↺ Actualizar</button>
+      </div>
       </div>
       <div id="almacen-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;"></div>
     </div>
@@ -2609,7 +2710,7 @@ function switchPanel(name) {
     if (SESSION.rol==='surtidor') FILTER_STATUS='porsurtir'; else FILTER_STATUS='todos';
     cargarPedidos();
   }
-  if (name==='nuevo') { cargarFolioPreview(); setTimeout(attachClienteKeyboard,100); }
+  if (name==='nuevo') { cargarFolioPreview(); loadClientes(); setTimeout(attachClienteKeyboard,100); }
   if (name==='reporte') generarReporte();
   if (name==='almacen') {
     ALM_FILTER='todos';
@@ -3071,7 +3172,7 @@ async function cargarFolioPreview() {
 async function loadClientes(){const res=await api('getClientes');if(res.ok)CLIENT_CACHE=res.clientes||[];}
 function autocompleteCliente(val){
   const list=document.getElementById('ac-list');
-  if (!val||val.length<2){list.classList.remove('open');return;}
+  if (!val||val.length<1){list.classList.remove('open');return;}
   const matches=CLIENT_CACHE.filter(c=>c.toLowerCase().includes(val.toLowerCase())).slice(0,8);
   if (!matches.length){list.classList.remove('open');return;}
   list.innerHTML=matches.map(c=>`<div class="autocomplete-item" onclick="selectCliente('${c.replace(/'/g,"\\'")}')">${c}</div>`).join('');
@@ -3443,6 +3544,16 @@ async function marcarUrgente(folio) {
 
 // ─── PANTALLA ALMACÉN ────────────────────────────────────────────────────────
 let ALM_FILTER = 'todos';
+let ALM_VISTA = 'grid';
+
+function almSetVista(v) {
+  ALM_VISTA = v;
+  document.getElementById('alm-btn-grid')?.classList.toggle('btn-primary', v==='grid');
+  document.getElementById('alm-btn-grid')?.classList.toggle('btn-ghost', v!=='grid');
+  document.getElementById('alm-btn-list')?.classList.toggle('btn-primary', v==='list');
+  document.getElementById('alm-btn-list')?.classList.toggle('btn-ghost', v!=='list');
+  renderAlmacen();
+}
 
 function almSetFilter(f) {
   ALM_FILTER = f;
@@ -3465,9 +3576,46 @@ function renderAlmacen() {
   });
   if (!pedidos.length) {
     grid.innerHTML = '<div style="color:var(--ink3);padding:40px;text-align:center;grid-column:1/-1;">No hay pedidos</div>';
+    grid.style.display = 'grid';
     return;
   }
-  grid.innerHTML = pedidos.map(p => buildAlmacenCard(p)).join('');
+  if (ALM_VISTA === 'list') {
+    grid.style.display = 'block';
+    grid.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="border-bottom:2px solid var(--border);color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">
+        <th style="padding:8px 10px;text-align:left;">Turno</th>
+        <th style="padding:8px 10px;text-align:left;">Folio</th>
+        <th style="padding:8px 10px;text-align:left;">Cliente</th>
+        <th style="padding:8px 10px;text-align:left;">Vendedor</th>
+        <th style="padding:8px 10px;text-align:left;">Estado</th>
+        <th style="padding:8px 10px;text-align:left;">Surtidor</th>
+        <th style="padding:8px 10px;text-align:left;">Acción</th>
+      </tr></thead>
+      <tbody>${pedidos.map(p => {
+        const ds = getDisplayStatus(p);
+        const badge = `<span class="badge badge-${ds}" style="font-size:10px;">${STATUS_LABELS[ds]||STATUS_LABELS[p.status]}</span>`;
+        let accion = '';
+        if (p.status==='porsurtir') accion=`<button class="btn btn-success" style="padding:4px 10px;font-size:11px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar</button>`;
+        else if (p.status==='surtiendo') accion=`<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="almSurtirPedido('${p.folio}','${p.surtidor}')">✔ Surtido</button>`;
+        const linSurt = ALL_LINEAS.filter(l=>l.folio===p.folio&&l.status==='surtiendo');
+        const linPend = ALL_LINEAS.filter(l=>l.folio===p.folio&&l.status==='porsurtir');
+        if (linPend.length) accion += linPend.map(l=>`<button class="btn btn-success" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almTomarLinea('${l.id}')">+Linea</button>`).join('');
+        if (linSurt.length) accion += linSurt.map(l=>`<button class="btn btn-primary" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almSurtirLinea('${l.id}','${l.surtidor}')">✔Linea</button>`).join('');
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px 10px;font-family:var(--font-mono);font-size:11px;">${p.turno||'—'}</td>
+          <td style="padding:8px 10px;font-weight:700;">${p.folio}</td>
+          <td style="padding:8px 10px;">${p.cliente}</td>
+          <td style="padding:8px 10px;color:var(--ink3);">${p.vendedor}</td>
+          <td style="padding:8px 10px;">${badge}</td>
+          <td style="padding:8px 10px;color:var(--ink3);">${p.surtidor||'—'}</td>
+          <td style="padding:8px 10px;">${accion}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } else {
+    grid.style.display = 'grid';
+    grid.innerHTML = pedidos.map(p => buildAlmacenCard(p)).join('');
+  }
 }
 
 function buildAlmacenCard(p) {
@@ -3488,12 +3636,24 @@ function buildAlmacenCard(p) {
     accionHtml = `<div style="font-size:12px;color:var(--green);margin-top:8px;">✔ Surtido en Rack ${p.rack} por ${p.surtidor}</div>`;
   }
 
-  // Lineas pendientes
-  const lineasPend = ALL_LINEAS.filter(l => l.folio === p.folio && l.status === 'porsurtir');
-  const lineasHtml = lineasPend.length ? `
+  // Lineas activas (porsurtir y surtiendo)
+  const lineasActivas = ALL_LINEAS.filter(l => l.folio === p.folio && (l.status === 'porsurtir' || l.status === 'surtiendo'));
+  const lineasHtml = lineasActivas.length ? `
     <div style="margin-top:10px;padding:8px;background:var(--surface2);border-radius:var(--radius);font-size:12px;">
-      📦 <strong>${lineasPend.length}</strong> línea(s) agregada(s) pendiente(s)
-      ${lineasPend.map(l=>`<div style="color:var(--ink3);margin-top:4px;">• ${l.nota} <button class="btn btn-success" style="padding:3px 8px;font-size:11px;margin-left:6px;" onclick="almTomarLinea('${l.id}')">Tomar</button></div>`).join('')}
+      📦 <strong>${lineasActivas.length}</strong> línea(s) agregada(s)
+      ${lineasActivas.map(l => {
+        if (l.status === 'porsurtir') {
+          return `<div style="color:var(--ink3);margin-top:6px;display:flex;align-items:center;gap:6px;">
+            <span>• ${l.nota}</span>
+            <button class="btn btn-success" style="padding:3px 8px;font-size:11px;" onclick="almTomarLinea('${l.id}')">Tomar</button>
+          </div>`;
+        } else {
+          return `<div style="color:var(--ink3);margin-top:6px;">
+            <div>• ${l.nota} — <strong style="color:#4a9eff">surtiendo: ${l.surtidor}</strong></div>
+            <button class="btn btn-primary" style="padding:3px 8px;font-size:11px;margin-top:4px;" onclick="almSurtirLinea('${l.id}','${l.surtidor}')">✔ Completar línea</button>
+          </div>`;
+        }
+      }).join('')}
     </div>` : '';
 
   return `<div style="background:var(--surface);border:1.5px solid ${borderColor};border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);">
@@ -3520,6 +3680,40 @@ function almTomarPedido(folio) {
     hideLoading();
     if (res.ok) { toast('Pedido ' + folio + ' asignado a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
     else toast(res.error, 'error');
+  });
+}
+
+function almSurtirLinea(id, surtidorAsignado) {
+  almPedirClave('Confirmar línea surtida — ingresa tu clave (' + surtidorAsignado + ')', async (usuario, pass) => {
+    if (usuario !== surtidorAsignado) { toast('Esta línea es de ' + surtidorAsignado, 'error'); return; }
+    showLoading('Verificando...');
+    const loginRes = await api('login', {usuario, password: pass});
+    if (!loginRes.ok) { hideLoading(); toast('Contraseña incorrecta', 'error'); return; }
+    hideLoading();
+    // Show rack selector for linea
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `<div style="background:var(--surface);border-radius:12px;padding:28px;max-width:400px;width:90%;">
+      <div style="font-weight:700;font-size:18px;margin-bottom:16px;">📍 Rack para la línea</div>
+      <div class="rack-grid" id="alm-lrack-grid">${RACKS.map(r=>`<div class="rack-btn" onclick="document.querySelectorAll('#alm-lrack-grid .rack-btn').forEach(b=>b.classList.remove('selected'));this.classList.add('selected');document.getElementById('alm-lrack-val').value='${r}'">${r}</div>`).join('')}</div>
+      <input type="hidden" id="alm-lrack-val">
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="
+          const rack=document.getElementById('alm-lrack-val').value;
+          if(!rack){return;}
+          this.closest('div[style*=fixed]').remove();
+          (async()=>{
+            showLoading('Guardando...');
+            const res=await api('surtirLinea',{id:'${id}',rack,surtidor:'${surtidorAsignado}'});
+            hideLoading();
+            if(res.ok){toast('Línea completada en Rack '+rack,'success');await cargarPedidos();renderAlmacen();}
+            else toast(res.error,'error');
+          })();
+        ">✔ Confirmar</button>
+        <button class="btn btn-ghost" onclick="this.closest('div[style*=fixed]').remove()">Cancelar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
   });
 }
 
