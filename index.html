@@ -1717,6 +1717,9 @@ function renderAlmacen() {
 }
 
 function buildAlmacenCard(p) {
+  const cola = buildGlobalQueue();
+  const siguiente = cola[0]; // El primero en la cola global
+
   const statusColor = {porsurtir:'var(--orange)',surtiendo:'#4a9eff',surtido:'var(--green)',enviado:'var(--purple)',cancelado:'var(--ink3)'};
   const borderColor = statusColor[p.status] || 'var(--border)';
   const ds = getDisplayStatus(p);
@@ -1725,7 +1728,21 @@ function buildAlmacenCard(p) {
 
   let accionHtml = '';
   if (p.status === 'porsurtir') {
-    accionHtml = `<button class="btn btn-success" style="width:100%;margin-top:12px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar pedido</button>`;
+    const esSiguiente = siguiente && siguiente.type === 'pedido' && siguiente.id === p.folio;
+    if (esSiguiente) {
+      // Es el siguiente — botón verde disponible
+      accionHtml = `<button class="btn btn-success" style="width:100%;margin-top:12px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar pedido</button>`;
+    } else {
+      // No es el siguiente — bloqueado, solo admin puede adelantar
+      const pos = cola.findIndex(x => x.type==='pedido' && x.id===p.folio);
+      const posLabel = pos >= 0 ? `#${pos+1}` : '?';
+      const sigLabel = siguiente ? (siguiente.type==='pedido' ? siguiente.folio : 'Línea') : '—';
+      accionHtml = `
+        <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.08);border-radius:6px;font-size:12px;color:var(--ink3);">
+          🔒 Posición <strong>${posLabel}</strong> en cola — siguiente: <strong style="color:var(--accent)">${sigLabel}</strong>
+        </div>
+        <button class="btn btn-ghost" style="width:100%;margin-top:8px;font-size:11px;" onclick="almTomarPedido('${p.folio}')">⚡ Solicitar adelanto (requiere admin)</button>`;
+    }
   } else if (p.status === 'surtiendo') {
     accionHtml = `
       <div style="font-size:12px;color:var(--ink3);margin-top:8px;">Surtidor: <strong style="color:var(--ink)">${p.surtidor}</strong></div>
@@ -1741,10 +1758,20 @@ function buildAlmacenCard(p) {
       📦 <strong>${lineasActivas.length}</strong> línea(s) agregada(s)
       ${lineasActivas.map(l => {
         if (l.status === 'porsurtir') {
-          return `<div style="color:var(--ink3);margin-top:6px;display:flex;align-items:center;gap:6px;">
-            <span>• ${l.nota}</span>
-            <button class="btn btn-success" style="padding:3px 8px;font-size:11px;" onclick="almTomarLinea('${l.id}')">Tomar</button>
-          </div>`;
+          const esSigLinea = siguiente && siguiente.type === 'linea' && siguiente.id === l.id;
+          if (esSigLinea) {
+            return `<div style="color:var(--ink3);margin-top:6px;display:flex;align-items:center;gap:6px;">
+              <span>• ${l.nota}</span>
+              <button class="btn btn-success" style="padding:3px 8px;font-size:11px;" onclick="almTomarLinea('${l.id}')">Tomar</button>
+            </div>`;
+          } else {
+            const posL = cola.findIndex(x => x.type==='linea' && x.id===l.id);
+            return `<div style="color:var(--ink3);margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span>• ${l.nota}</span>
+              <span style="font-size:10px;background:rgba(0,0,0,.1);padding:2px 6px;border-radius:4px;">🔒 pos ${posL>=0?posL+1:'?'}</span>
+              <button class="btn btn-ghost" style="padding:2px 7px;font-size:10px;" onclick="almTomarLinea('${l.id}')">⚡ Adelantar</button>
+            </div>`;
+          }
         } else {
           return `<div style="color:var(--ink3);margin-top:6px;">
             <div>• ${l.nota} — <strong style="color:#4a9eff">surtiendo: ${l.surtidor}</strong></div>
