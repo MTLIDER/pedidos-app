@@ -1818,6 +1818,9 @@ function almTomarPedido(folio) {
     if (!loginRes.ok || (loginRes.rol !== 'surtidor' && loginRes.rol !== 'admin')) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
+    // Recargar datos frescos antes de validar
+    showLoading('Verificando cola...');
+    await cargarPedidos();
     hideLoading();
 
     // Verificar que el surtidor no tenga un pedido/línea en curso (surtiendo)
@@ -1825,8 +1828,9 @@ function almTomarPedido(folio) {
       const enCurso = ALL_PEDIDOS.find(x => x.surtidor === usuario && x.status === 'surtiendo') ||
                       ALL_LINEAS.find(x => x.surtidor === usuario && x.status === 'surtiendo');
       if (enCurso) {
-        const label = enCurso.folio ? `pedido ${enCurso.folio}` : `línea ${enCurso.id}`;
+        const label = enCurso.folio && enCurso.status === 'surtiendo' ? `pedido ${enCurso.folio}` : `una línea`;
         toast(`${loginRes.nombre} ya tiene el ${label} en curso — ciérralo antes de tomar otro`, 'error');
+        renderAlmacen();
         return;
       }
     }
@@ -1911,13 +1915,18 @@ function almTomarLinea(id) {
     if (!loginRes.ok || (loginRes.rol !== 'surtidor' && loginRes.rol !== 'admin')) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
+    // Recargar datos frescos antes de validar
+    showLoading('Verificando cola...');
+    await cargarPedidos();
     hideLoading();
+
     if (loginRes.rol !== 'admin') {
       const enCurso = ALL_PEDIDOS.find(x => x.surtidor === usuario && x.status === 'surtiendo') ||
                       ALL_LINEAS.find(x => x.surtidor === usuario && x.status === 'surtiendo');
       if (enCurso) {
-        const label = enCurso.folio && enCurso.status ? `pedido ${enCurso.folio}` : `línea`;
-        toast(`${loginRes.nombre} ya tiene un ${label} en curso — ciérralo antes de tomar otro`, 'error');
+        const label = enCurso.folio && enCurso.status === 'surtiendo' ? `pedido ${enCurso.folio}` : `una línea`;
+        toast(`${loginRes.nombre} ya tiene el ${label} en curso — ciérralo antes de tomar otro`, 'error');
+        renderAlmacen();
         return;
       }
     }
