@@ -1689,15 +1689,32 @@ function renderAlmacen() {
         <th style="padding:8px 10px;text-align:left;">Surtidor</th>
         <th style="padding:8px 10px;text-align:left;">Acción</th>
       </tr></thead>
-      <tbody>${pedidos.map(p => {
+      <tbody>${(() => {
+        const cola = buildGlobalQueue();
+        const siguiente = cola[0];
+        return pedidos.map(p => {
         const ds = getDisplayStatus(p);
         const badge = `<span class="badge badge-${ds}" style="font-size:10px;">${STATUS_LABELS[ds]||STATUS_LABELS[p.status]}</span>`;
         let accion = '';
-        if (p.status==='porsurtir') accion=`<button class="btn btn-success" style="padding:4px 10px;font-size:11px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar</button>`;
-        else if (p.status==='surtiendo') accion=`<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="almSurtirPedido('${p.folio}','${p.surtidor}')">✔ Surtido</button>`;
+        if (p.status==='porsurtir') {
+          const esSig = siguiente && siguiente.type==='pedido' && siguiente.id===p.folio;
+          if (esSig) {
+            accion=`<button class="btn btn-success" style="padding:4px 10px;font-size:11px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar</button>`;
+          } else {
+            const pos = cola.findIndex(x=>x.type==='pedido'&&x.id===p.folio);
+            accion=`<span style="font-size:11px;color:var(--ink3);">🔒 pos ${pos>=0?pos+1:'?'}</span> <button class="btn btn-ghost" style="padding:2px 7px;font-size:10px;" onclick="almTomarPedido('${p.folio}')">⚡Admin</button>`;
+          }
+        } else if (p.status==='surtiendo') {
+          accion=`<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="almSurtirPedido('${p.folio}','${p.surtidor}')">✔ Surtido</button>`;
+        }
         const linSurt = ALL_LINEAS.filter(l=>l.folio===p.folio&&l.status==='surtiendo');
         const linPend = ALL_LINEAS.filter(l=>l.folio===p.folio&&l.status==='porsurtir');
-        if (linPend.length) accion += linPend.map(l=>`<button class="btn btn-success" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almTomarLinea('${l.id}')">+Linea</button>`).join('');
+        if (linPend.length) accion += linPend.map(l=>{
+          const esSigL = siguiente && siguiente.type==='linea' && siguiente.id===l.id;
+          if (esSigL) return `<button class="btn btn-success" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almTomarLinea('${l.id}')">+Linea</button>`;
+          const posL = cola.findIndex(x=>x.type==='linea'&&x.id===l.id);
+          return `<button class="btn btn-ghost" style="padding:2px 7px;font-size:10px;margin-left:4px;" onclick="almTomarLinea('${l.id}')">🔒L${posL>=0?posL+1:'?'}</button>`;
+        }).join('');
         if (linSurt.length) accion += linSurt.map(l=>`<button class="btn btn-primary" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almSurtirLinea('${l.id}','${l.surtidor}')">✔Linea</button>`).join('');
         return `<tr style="border-bottom:1px solid var(--border);">
           <td style="padding:8px 10px;font-family:var(--font-mono);font-size:11px;">${p.turno||'—'}</td>
@@ -1708,7 +1725,7 @@ function renderAlmacen() {
           <td style="padding:8px 10px;color:var(--ink3);">${p.surtidor||'—'}</td>
           <td style="padding:8px 10px;">${accion}</td>
         </tr>`;
-      }).join('')}</tbody>
+        }).join('');})()}</tbody>
     </table>`;
   } else {
     grid.style.display = 'grid';
