@@ -59,6 +59,12 @@ body{overflow-x:hidden;}
 .btn-sm{padding:7px 12px;border-radius:var(--radius);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid rgba(255,255,255,.2);background:transparent;color:#fff;transition:all .15s;position:relative;}
 .btn-sm:hover{background:rgba(255,255,255,.1);}
 .btn-sm.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+/* Botones de navegación de panel — se adaptan al tema claro/oscuro */
+.btn-nav{padding:7px 14px;border-radius:var(--radius);font-family:var(--font-body);font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);transition:all .15s;position:relative;}
+.btn-nav:hover{border-color:var(--brand-blue,#0ea5d8);color:var(--brand-blue,#0ea5d8);background:var(--surface2);}
+.btn-nav.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.dark .btn-nav{color:var(--ink2);border-color:var(--border);background:var(--surface);}
+.dark .btn-nav.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 /* Notif badge */
 .notif-badge{position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--ink);}
 /* Dark toggle */
@@ -974,7 +980,7 @@ function initApp() {
 function buildNav() {
   const nav=navByRole(SESSION.rol);
   const tabs=document.getElementById('nav-tabs');
-  tabs.innerHTML=nav.map(n=>`<button class="btn-sm" data-panel="${n.panel}" onclick="switchPanel('${n.panel}')">${n.label}</button>`).join('');
+  tabs.innerHTML=nav.map(n=>`<button class="btn-nav" data-panel="${n.panel}" onclick="switchPanel('${n.panel}')">${n.label}</button>`).join('');
   switchPanel(nav[0].panel);
   if (SESSION.rol === 'almacen') {
     setTimeout(async () => { await cargarPedidos(); renderAlmacen(); }, 500);
