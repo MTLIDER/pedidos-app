@@ -62,6 +62,85 @@ body{overflow-x:hidden;}
 .dark-toggle{background:none;border:1.5px solid rgba(255,255,255,.2);color:#fff;padding:6px 10px;border-radius:var(--radius);cursor:pointer;font-size:14px;transition:all .15s;}
 .dark-toggle:hover{background:rgba(255,255,255,.1);}
 .app-body{flex:1;padding:24px;max-width:1200px;margin:0 auto;width:100%;}
+
+/* ── AUTO-REFRESH UI ──────────────────────────────────────────────────────── */
+/* Barra de progreso debajo de la topbar */
+.refresh-progress-bar{
+  position:sticky;
+  top:56px;
+  z-index:99;
+  height:3px;
+  background:rgba(255,255,255,.08);
+  overflow:hidden;
+}
+.refresh-progress-fill{
+  height:100%;
+  background:linear-gradient(90deg,#00c853,#00e676);
+  width:100%;
+  transform-origin:left;
+  transition:transform linear;
+}
+.refresh-progress-fill.paused{
+  background:#ff6d00;
+  transition:none;
+}
+/* Indicador "última actualización" en topbar */
+.refresh-status{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:11px;
+  color:rgba(255,255,255,.5);
+  white-space:nowrap;
+}
+.refresh-dot{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:#00c853;
+  flex-shrink:0;
+  transition:background .3s;
+}
+.refresh-dot.syncing{
+  background:#ff9800;
+  animation:dotPulse .6s ease-in-out infinite alternate;
+}
+.refresh-dot.paused{
+  background:#555;
+}
+@keyframes dotPulse{from{opacity:.4;transform:scale(.8)}to{opacity:1;transform:scale(1.2)}}
+/* Botón refresh con animación de giro */
+@keyframes spinOnce{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.btn-refresh-spin{
+  display:inline-block;
+  transition:transform .3s;
+}
+.btn-sm.refreshing .btn-refresh-spin{
+  animation:spinOnce .6s linear;
+}
+/* Selector de intervalo */
+.refresh-interval-select{
+  background:rgba(255,255,255,.1);
+  border:1.5px solid rgba(255,255,255,.2);
+  color:#fff;
+  padding:5px 8px;
+  border-radius:var(--radius);
+  font-size:11px;
+  font-family:var(--font-body);
+  cursor:pointer;
+  outline:none;
+}
+.refresh-interval-select option{
+  background:#1a237e;
+  color:#fff;
+}
+/* Toast de cambios detectados — más discreto */
+.toast.changes{
+  background:#1a237e;
+  border-left:3px solid #00c853;
+}
+/* ── FIN AUTO-REFRESH UI ─────────────────────────────────────────────────── */
+
 /* PANELS */
 .panel{display:none;animation:fadeIn .25s ease;}.panel.active{display:block;}
 .panel-title{font-family:var(--font-display);font-size:32px;letter-spacing:1px;margin-bottom:4px;}
@@ -215,12 +294,35 @@ body{overflow-x:hidden;}
 .notif-item-text{font-size:13px;color:var(--ink);line-height:1.4;}
 .notif-item-time{font-size:11px;color:var(--ink3);margin-top:3px;}
 .notif-empty{padding:24px;text-align:center;color:var(--ink3);font-size:13px;}
-/* REPORTE */
-.reporte-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;}
-.rep-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;}
-.rep-num{font-family:var(--font-display);font-size:40px;color:var(--ink);}
-.rep-lbl{font-size:12px;color:var(--ink3);text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
-.rep-sub{font-size:13px;color:var(--ink2);margin-top:6px;}
+/* REPORTE NUEVO */
+.rep-kpi{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px 18px;position:relative;overflow:hidden;}
+.rep-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kpi-color,var(--accent));}
+.rep-kpi-num{font-family:var(--font-display);font-size:36px;line-height:1;color:var(--kpi-color,var(--ink));}
+.rep-kpi-lbl{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
+.rep-kpi-sub{font-size:12px;color:var(--ink2);margin-top:5px;}
+/* Gráfica de barras SVG */
+.bar-chart-wrap{width:100%;overflow:hidden;}
+.bar-chart-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--ink3);margin-bottom:14px;}
+.bar-group{display:flex;align-items:flex-end;gap:4px;height:90px;margin-bottom:6px;}
+.bar{flex:1;border-radius:3px 3px 0 0;transition:height .4s ease;min-width:8px;cursor:default;position:relative;}
+.bar:hover::after{content:attr(data-val);position:absolute;top:-22px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700;white-space:nowrap;}
+.bar-labels{display:flex;gap:4px;}
+.bar-lbl{flex:1;text-align:center;font-size:9px;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Tabla ranking */
+.rank-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;}
+.rank-table th{padding:8px 12px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);border-bottom:2px solid var(--border);text-align:left;}
+.rank-table td{padding:10px 12px;border-bottom:1px solid var(--surface2);}
+.rank-table tr:hover td{background:var(--surface2);}
+.rank-pos{font-family:var(--font-display);font-size:22px;color:var(--ink3);width:36px;}
+.rank-pos.gold{color:#f9a825;}
+.rank-pos.silver{color:#90a4ae;}
+.rank-pos.bronze{color:#a1887f;}
+/* Progress bar inline */
+.inline-bar{height:6px;border-radius:3px;background:var(--border);margin-top:4px;overflow:hidden;}
+.inline-bar-fill{height:100%;border-radius:3px;transition:width .5s ease;}
+@media(max-width:700px){
+  #rep-charts-row{grid-template-columns:1fr;}
+}
 /* USERS ADMIN */
 .data-table{width:100%;border-collapse:collapse;font-size:13px;}
 .data-table th{padding:10px 14px;text-align:left;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink3);border-bottom:2px solid var(--border);}
@@ -255,6 +357,7 @@ body{overflow-x:hidden;}
   .stats-row{grid-template-columns:1fr 1fr;}
   .app-body{padding:14px;}
   .notif-panel{width:calc(100vw - 32px);}
+  .refresh-status{display:none;}
 }
 </style>
 </head>
@@ -279,12 +382,34 @@ body{overflow-x:hidden;}
     <span class="topbar-user" id="topbar-user"></span>
     <span class="topbar-role" id="topbar-role"></span>
     <div class="topbar-actions" id="topbar-actions">
+      <!-- Indicador de auto-refresh -->
+      <div class="refresh-status" id="refresh-status" title="Estado de sincronización">
+        <div class="refresh-dot" id="refresh-dot"></div>
+        <span id="refresh-label">--:--</span>
+      </div>
+      <!-- Selector de intervalo -->
+      <select class="refresh-interval-select" id="refresh-interval-select" title="Intervalo de actualización" onchange="setRefreshInterval(parseInt(this.value))">
+        <option value="15">15s</option>
+        <option value="30" selected>30s</option>
+        <option value="60">1 min</option>
+        <option value="120">2 min</option>
+        <option value="0">Manual</option>
+      </select>
+      <!-- Botón de refresh manual -->
+      <button class="btn-sm" id="btn-refresh-manual" onclick="manualRefresh()" title="Actualizar ahora">
+        <span class="btn-refresh-spin">↻</span>
+      </button>
       <button class="btn-sm" id="notif-btn" onclick="toggleNotifPanel()" title="Notificaciones">
         🔔 <span id="notif-count" class="notif-badge" style="display:none">0</span>
       </button>
       <button class="dark-toggle" onclick="toggleDark()" id="dark-btn" title="Modo oscuro">🌙</button>
       <button class="btn-sm" onclick="doLogout()">Salir</button>
     </div>
+  </div>
+
+  <!-- Barra de progreso de refresh -->
+  <div class="refresh-progress-bar">
+    <div class="refresh-progress-fill" id="refresh-progress-fill"></div>
   </div>
 
   <!-- Notif Panel -->
@@ -297,7 +422,7 @@ body{overflow-x:hidden;}
   </div>
 
   <div class="app-body">
-    <!-- NAV TABS (mobile friendly) -->
+    <!-- NAV TABS -->
     <div style="display:flex;gap:4px;margin-bottom:20px;flex-wrap:wrap;" id="nav-tabs"></div>
 
     <!-- PANEL: NUEVO PEDIDO -->
@@ -305,7 +430,6 @@ body{overflow-x:hidden;}
       <div class="panel-title">Nuevo Pedido</div>
       <div class="panel-sub">Registra un pedido para surtir</div>
       <div class="card">
-        <!-- Consecutivo interno -->
         <div style="display:inline-flex;align-items:center;gap:10px;padding:8px 16px;background:var(--surface2);border-radius:var(--radius);margin-bottom:20px;border:1.5px solid var(--border);">
           <span style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:1px;">Turno de surtido asignado</span>
           <span style="font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--accent);" id="np-folio-preview">...</span>
@@ -345,9 +469,7 @@ body{overflow-x:hidden;}
             <input type="text" id="ag-folio" placeholder="ej. PED-2024-001" oninput="this.value=this.value.toUpperCase();buscarFolioAgregar()" style="flex:1">
           </div>
         </div>
-        <!-- Info del folio encontrado -->
         <div id="ag-info" style="display:none;padding:12px 16px;background:var(--surface2);border-radius:var(--radius);margin-bottom:16px;font-size:13px;"></div>
-        <!-- Form agregar -->
         <div id="ag-form" style="display:none;">
           <div class="form-field" style="margin-bottom:16px;">
             <label>Nota / Descripción de lo que se agrega *</label>
@@ -356,7 +478,6 @@ body{overflow-x:hidden;}
           <button class="btn btn-primary" onclick="agregarLinea()">+ Agregar al Pedido</button>
         </div>
       </div>
-      <!-- Líneas ya agregadas a este folio -->
       <div id="ag-lineas" style="margin-top:16px;max-width:560px;"></div>
     </div>
 
@@ -365,7 +486,6 @@ body{overflow-x:hidden;}
       <div class="panel-title">Pedidos</div>
       <div class="stats-row" id="stats-row"></div>
 
-      <!-- Date filter -->
       <div class="date-filter">
         <label>Desde</label>
         <input type="date" id="df-desde" onchange="renderPedidos()">
@@ -381,7 +501,7 @@ body{overflow-x:hidden;}
           <button class="view-btn active" id="vbtn-cards" onclick="setView('cards')" title="Vista tarjetas">⊞</button>
           <button class="view-btn" id="vbtn-table" onclick="setView('table')" title="Vista tabla">☰</button>
         </div>
-        <button class="refresh-btn" onclick="cargarPedidos()">↻ Actualizar</button>
+        <button class="refresh-btn" onclick="manualRefresh()">↻ Actualizar</button>
         <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px;" onclick="exportarExcel()">⬇ Excel</button>
       </div>
       <div id="pedidos-container"></div>
@@ -405,15 +525,72 @@ body{overflow-x:hidden;}
 
     <!-- PANEL: REPORTE -->
     <div class="panel" id="panel-reporte">
-      <div class="panel-title">Reporte del Día</div>
-      <div class="panel-sub" id="reporte-fecha"></div>
-      <div class="reporte-grid" id="reporte-grid"></div>
-      <div class="card" id="reporte-detalle"></div>
+      <div class="panel-title">Estadísticas</div>
+
+      <!-- Filtros de fecha -->
+      <div class="card" style="margin-bottom:18px;padding:16px 20px;">
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-field">
+            <label>Desde</label>
+            <input type="date" id="rep-desde" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--ink);font-family:var(--font-body);font-size:13px;outline:none;">
+          </div>
+          <div class="form-field">
+            <label>Hasta</label>
+            <input type="date" id="rep-hasta" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--ink);font-family:var(--font-body);font-size:13px;outline:none;">
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-ghost" style="padding:9px 14px;font-size:12px;" onclick="repSetRango('hoy')">Hoy</button>
+            <button class="btn btn-ghost" style="padding:9px 14px;font-size:12px;" onclick="repSetRango('semana')">Esta semana</button>
+            <button class="btn btn-ghost" style="padding:9px 14px;font-size:12px;" onclick="repSetRango('mes')">Este mes</button>
+            <button class="btn btn-primary" style="padding:9px 16px;font-size:12px;" onclick="generarReporte()">↻ Generar</button>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--ink3);font-weight:600;letter-spacing:.5px;text-transform:uppercase;">Horario hábil</span>
+            <span style="font-size:11px;background:var(--surface2);padding:4px 10px;border-radius:var(--radius);color:var(--ink2);">Lun-Vie 10:00–19:30 · Sáb 10:00–14:00</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:8px;" id="rep-rango-label"></div>
+      </div>
+
+      <!-- KPIs principales -->
+      <div id="rep-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+      <!-- Fila de gráficas + tablas -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;" id="rep-charts-row">
+        <!-- Gráfica pedidos por hora -->
+        <div class="card" id="rep-chart-horas" style="padding:18px;"></div>
+        <!-- Gráfica por día de semana -->
+        <div class="card" id="rep-chart-dias" style="padding:18px;"></div>
+      </div>
+
+      <!-- Ranking vendedores -->
+      <div class="card" style="margin-bottom:16px;" id="rep-vendedores"></div>
+      <!-- Ranking surtidores -->
+      <div class="card" id="rep-surtidores"></div>
     </div>
 
     <!-- PANEL: ADMIN -->
     <div class="panel" id="panel-admin">
       <div class="panel-title">Administración</div>
+
+      <!-- Auto-refresh config -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-weight:600;font-size:15px;margin-bottom:12px;">🔄 Actualización Automática</div>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-field">
+            <label>Intervalo de actualización</label>
+            <select id="cfg-intervalo" style="padding:11px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;outline:none;" onchange="setRefreshInterval(parseInt(this.value));document.getElementById('refresh-interval-select').value=this.value">
+              <option value="15">15 segundos</option>
+              <option value="30" selected>30 segundos</option>
+              <option value="60">1 minuto</option>
+              <option value="120">2 minutos</option>
+              <option value="0">Manual (desactivado)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="manualRefresh()">↻ Actualizar ahora</button>
+        </div>
+        <p style="font-size:12px;color:var(--ink3);margin-top:10px;">La barra verde debajo de la barra superior muestra el tiempo hasta la siguiente actualización.</p>
+      </div>
 
       <!-- Contraseña urgencias -->
       <div class="card" style="margin-bottom:16px;">
@@ -464,7 +641,6 @@ body{overflow-x:hidden;}
           <div style="font-size:12px;color:var(--ink3);">Agrega o edita usuarios desde aquí</div></div>
           <button class="btn btn-primary" onclick="showAddUser()">+ Nuevo Usuario</button>
         </div>
-        <!-- Nuevo usuario form (hidden by default) -->
         <div id="add-user-form" style="display:none;background:var(--surface2);border-radius:8px;padding:16px;margin-bottom:16px;">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px;">
             <div class="form-field"><label>Usuario</label><input type="text" id="nu-usuario"></div>
@@ -523,10 +699,10 @@ body{overflow-x:hidden;}
         <button class="filter-tab" id="alm-tab-surtido" onclick="almSetFilter('surtido')">Surtido</button>
         <button class="filter-tab" id="alm-tab-enviado" onclick="almSetFilter('enviado')">Enviado</button>
         <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
-        <button id="alm-btn-grid" class="btn btn-primary" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('grid')" title="Tarjetas">⊞</button>
-        <button id="alm-btn-list" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('list')" title="Lista">☰</button>
-        <button class="btn btn-ghost" style="font-size:12px;" onclick="cargarPedidos()">↺ Actualizar</button>
-      </div>
+          <button id="alm-btn-grid" class="btn btn-primary" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('grid')" title="Tarjetas">⊞</button>
+          <button id="alm-btn-list" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('list')" title="Lista">☰</button>
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="manualRefresh()">↺ Actualizar</button>
+        </div>
       </div>
       <div id="almacen-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;"></div>
     </div>
@@ -691,7 +867,6 @@ function apiDemo(action, data) {
     if (p.status==='cancelado') return {ok:false,error:'El pedido está cancelado'};
     if (p.status==='enviado') return {ok:false,error:'El pedido ya fue enviado'};
     const id='LIN-'+Date.now();
-    // Consecutivo global para respetar cola FIFO — cuenta pedidos + lineas ya registradas
     const consecutivoGlobal = pedidos.length + lineas.length + 1;
     const turno = '#L'+String(consecutivoGlobal).padStart(4,'0');
     lineas.push({id,folio:data.folio,nota:data.nota,vendedor:data.vendedor,status:'porsurtir',consecutivo:consecutivoGlobal,turno,ts_registro:now(),ts_surtiendo:'',ts_surtido:'',surtidor:'',rack:''});
@@ -753,6 +928,7 @@ async function doLogin() {
 function setLoginError(msg){document.getElementById('login-error').textContent=msg;setTimeout(()=>document.getElementById('login-error').textContent='',3000);}
 
 function doLogout(){
+  stopAutoRefresh();
   SESSION=null;localStorage.removeItem('pedidos_session');
   document.getElementById('screen-app').classList.remove('active');
   document.getElementById('screen-login').classList.remove('hidden-login');
@@ -782,7 +958,6 @@ function buildNav() {
   const tabs=document.getElementById('nav-tabs');
   tabs.innerHTML=nav.map(n=>`<button class="btn-sm" data-panel="${n.panel}" onclick="switchPanel('${n.panel}')">${n.label}</button>`).join('');
   switchPanel(nav[0].panel);
-  // Force load for almacen role
   if (SESSION.rol === 'almacen') {
     setTimeout(async () => { await cargarPedidos(); renderAlmacen(); }, 500);
   }
@@ -809,7 +984,11 @@ function switchPanel(name) {
     cargarPedidos();
   }
   if (name==='nuevo') { cargarFolioPreview(); loadClientes(); setTimeout(attachClienteKeyboard,100); }
-  if (name==='reporte') generarReporte();
+  if (name==='reporte') {
+    // Si no tiene fechas, inicializar con "hoy"
+    if (!document.getElementById('rep-desde').value) repSetRango('hoy');
+    else generarReporte();
+  }
   if (name==='almacen') {
     ALM_FILTER='todos';
     (async()=>{ await cargarPedidos(); renderAlmacen(); })();
@@ -817,22 +996,164 @@ function switchPanel(name) {
   if (name==='admin') { document.getElementById('sheets-url').value=SHEETS_URL; cargarUsuariosAdmin(); }
 }
 
-// ─── AUTO REFRESH & ALERTAS ───────────────────────────────────────────────────
-let refreshInterval=null;
+// ─── AUTO REFRESH — SISTEMA COMPLETO ─────────────────────────────────────────
+let _refreshInterval = null;         // setInterval handle
+let _progressTimer = null;           // requestAnimationFrame handle
+let _refreshIntervalSecs = parseInt(localStorage.getItem('pedidos_refresh_interval') || '30');
+let _nextRefreshAt = 0;              // timestamp de la próxima actualización
+let _lastRefreshAt = 0;              // timestamp de la última actualización
+
 function startAutoRefresh() {
-  if (refreshInterval) clearInterval(refreshInterval);
-  refreshInterval=setInterval(async()=>{
+  stopAutoRefresh();
+  // Sincronizar selector con valor guardado
+  const sel = document.getElementById('refresh-interval-select');
+  if (sel) sel.value = _refreshIntervalSecs;
+  const selAdmin = document.getElementById('cfg-intervalo');
+  if (selAdmin) selAdmin.value = _refreshIntervalSecs;
+
+  if (_refreshIntervalSecs === 0) {
+    setRefreshDotState('paused');
+    setProgressFill(0, false);
+    updateRefreshLabel('Manual');
+    return;
+  }
+  scheduleNext();
+}
+
+function stopAutoRefresh() {
+  if (_refreshInterval) { clearInterval(_refreshInterval); _refreshInterval = null; }
+  if (_progressTimer) { cancelAnimationFrame(_progressTimer); _progressTimer = null; }
+}
+
+function scheduleNext() {
+  stopAutoRefresh();
+  if (_refreshIntervalSecs === 0) return;
+  _nextRefreshAt = Date.now() + _refreshIntervalSecs * 1000;
+  // Barra de progreso — animación CSS con transition
+  setProgressFill(1, true, _refreshIntervalSecs);
+  setRefreshDotState('active');
+  // Iniciar ticker para el countdown en el label
+  tickCountdown();
+  // Programar la actualización
+  _refreshInterval = setTimeout(async () => {
+    await doAutoRefresh();
+    scheduleNext(); // Reprogramar después de completar
+  }, _refreshIntervalSecs * 1000);
+}
+
+function tickCountdown() {
+  if (_progressTimer) cancelAnimationFrame(_progressTimer);
+  function tick() {
+    const remaining = Math.max(0, _nextRefreshAt - Date.now());
+    const secs = Math.ceil(remaining / 1000);
+    updateRefreshLabel(secs > 0 ? `${secs}s` : '...');
+    if (remaining > 0) {
+      _progressTimer = requestAnimationFrame(tick);
+    }
+  }
+  _progressTimer = requestAnimationFrame(tick);
+}
+
+function setProgressFill(fraction, animated, durationSecs) {
+  const fill = document.getElementById('refresh-progress-fill');
+  if (!fill) return;
+  if (animated && durationSecs) {
+    // Reset instantáneo a 100%, luego anima a 0%
+    fill.style.transition = 'none';
+    fill.style.transform = 'scaleX(1)';
+    fill.classList.remove('paused');
+    // Forzar reflow antes de aplicar transición
+    fill.getBoundingClientRect();
+    fill.style.transition = `transform ${durationSecs}s linear`;
+    fill.style.transform = 'scaleX(0)';
+  } else {
+    fill.style.transition = 'none';
+    fill.style.transform = `scaleX(${fraction})`;
+    if (fraction === 0) fill.classList.add('paused');
+    else fill.classList.remove('paused');
+  }
+}
+
+function setRefreshDotState(state) {
+  const dot = document.getElementById('refresh-dot');
+  if (!dot) return;
+  dot.className = 'refresh-dot' + (state !== 'active' ? ' ' + state : '');
+}
+
+function updateRefreshLabel(text) {
+  const el = document.getElementById('refresh-label');
+  if (el) el.textContent = text;
+}
+
+function setRefreshInterval(secs) {
+  _refreshIntervalSecs = secs;
+  localStorage.setItem('pedidos_refresh_interval', secs);
+  // Sincronizar ambos selectores
+  const sel1 = document.getElementById('refresh-interval-select');
+  const sel2 = document.getElementById('cfg-intervalo');
+  if (sel1) sel1.value = secs;
+  if (sel2) sel2.value = secs;
+  startAutoRefresh();
+  if (secs === 0) toast('Auto-refresh desactivado — usa el botón ↻ para actualizar', 'info');
+  else toast(`Auto-refresh: cada ${secs >= 60 ? (secs/60) + ' min' : secs + 's'}`, 'info');
+}
+
+async function manualRefresh() {
+  // Animación del botón
+  const btn = document.getElementById('btn-refresh-manual');
+  if (btn) {
+    btn.classList.add('refreshing');
+    btn.disabled = true;
+    setTimeout(() => { btn.classList.remove('refreshing'); btn.disabled = false; }, 700);
+  }
+  // Si hay auto-refresh activo, reiniciar el temporizador desde cero
+  if (_refreshIntervalSecs > 0) {
+    stopAutoRefresh();
+    setProgressFill(1, false); // Barra llena sin animación mientras carga
+    setRefreshDotState('syncing');
+  }
+  await doAutoRefresh();
+  if (_refreshIntervalSecs > 0) scheduleNext();
+}
+
+async function doAutoRefresh() {
+  setRefreshDotState('syncing');
+  try {
     const [resPed, resLin] = await Promise.all([api('getPedidos'), api('getAllLineas')]);
-    if (resPed.ok) {
-      const prev=ALL_PEDIDOS;
-      ALL_PEDIDOS=resPed.pedidos||[];
-      ALL_LINEAS = resLin.ok ? resLin.lineas : [];
-      checkNotifications(prev, ALL_PEDIDOS);
-      checkVencidos();
+    if (!resPed.ok) { setRefreshDotState('active'); return; }
+    const prevPedidos = ALL_PEDIDOS;
+    const newPedidos = resPed.pedidos || [];
+    const newLineas = resLin.ok ? resLin.lineas : [];
+    // Detectar cambios reales antes de re-renderizar
+    const huboCambios = detectChanges(prevPedidos, newPedidos, ALL_LINEAS, newLineas);
+    ALL_PEDIDOS = newPedidos;
+    ALL_LINEAS = newLineas;
+    _lastRefreshAt = Date.now();
+    if (huboCambios) {
+      checkNotifications(prevPedidos, ALL_PEDIDOS);
+    }
+    checkVencidos();
+    // Solo re-renderizar paneles visibles — no interrumpir al usuario
+    const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
+    if (!modalOpen) {
       if (document.getElementById('panel-lista').classList.contains('active')) renderPedidos();
       if (document.getElementById('panel-almacen')?.classList.contains('active')) renderAlmacen();
     }
-  }, 30000); // cada 30 seg
+    setRefreshDotState('active');
+  } catch(e) {
+    setRefreshDotState('paused');
+  }
+}
+
+// Detecta si hubo algún cambio real de estado entre los datos anteriores y nuevos
+function detectChanges(prevPeds, newPeds, prevLins, newLins) {
+  if (prevPeds.length !== newPeds.length) return true;
+  if (prevLins.length !== newLins.length) return true;
+  for (const np of newPeds) {
+    const op = prevPeds.find(x => x.folio === np.folio);
+    if (!op || op.status !== np.status || op.surtidor !== np.surtidor) return true;
+  }
+  return false;
 }
 
 function checkNotifications(prev, curr) {
@@ -840,7 +1161,6 @@ function checkNotifications(prev, curr) {
     const old=prev.find(x=>x.folio===p.folio);
     if (!old) return;
     if (old.status!==p.status) {
-      // Solo notificar si afecta al usuario actual
       const afecta = SESSION.rol==='admin' ||
         (SESSION.rol==='vendedor' && p.vendedor===SESSION.username) ||
         (SESSION.rol==='surtidor' && (p.status==='porsurtir' || p.surtidor===SESSION.username));
@@ -872,7 +1192,6 @@ function checkVencidos() {
 
 function parseDate(str) {
   if (!str) return null;
-  // Format: dd/MM/yyyy HH:mm:ss
   const m=str.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/);
   if (m) return new Date(m[3],m[2]-1,m[1],m[4],m[5],m[6]);
   return new Date(str);
@@ -920,7 +1239,6 @@ function markRead(i) {
 
 function clearNotifs() {
   NOTIFS=[];localStorage.setItem('pedidos_notifs','[]');
-  // Clear vencido keys
   Object.keys(localStorage).filter(k=>k.startsWith('venc_')).forEach(k=>localStorage.removeItem(k));
   renderNotifBadge(); renderNotifPanel();
 }
@@ -963,9 +1281,7 @@ function renderPedidos() {
   const desde=document.getElementById('df-desde')?.value;
   const hasta=document.getElementById('df-hasta')?.value;
 
-  // Stats
   const counts={porsurtir:0,agregado:0,surtiendo:0,surtido:0,enviado:0,vencido:0};
-  // Folios con líneas pendientes
   const foliosAgregados = new Set(ALL_LINEAS.filter(l=>l.status==='porsurtir').map(l=>l.folio));
   ALL_PEDIDOS.forEach(p=>{
     if (isVencido(p)) counts.vencido++;
@@ -975,19 +1291,16 @@ function renderPedidos() {
   document.getElementById('stats-row').innerHTML=Object.entries(counts).map(([k,v])=>`
     <div class="stat-box s-${k}"><div class="stat-num">${v}</div><div class="stat-lbl">${STATUS_LABELS[k]||k}</div></div>`).join('');
 
-  // Filter tabs
   const statuses=['todos','porsurtir','agregado','surtiendo','surtido','enviado','cancelado','vencido'];
   document.getElementById('filter-tabs').innerHTML=statuses.map(s=>`
     <button class="filter-tab ${FILTER_STATUS===s?'active':''}" onclick="setFilter('${s}')">${s==='todos'?'Todos':STATUS_LABELS[s]}</button>`).join('');
 
-  // Filter
   let pedidos=[...ALL_PEDIDOS];
   if (SESSION.rol==='vendedor') pedidos=pedidos.filter(p=>p.vendedor===SESSION.username);
   else if (SESSION.rol==='surtidor') pedidos=pedidos.filter(p=>p.status==='porsurtir'||p.surtidor===SESSION.username);
 
   if (FILTER_STATUS==='vencido') pedidos=pedidos.filter(p=>isVencido(p));
   else if (FILTER_STATUS==='agregado') {
-    // Show ALL pedidos that have at least one pending linea, regardless of pedido status
     const foliosConAgregados = new Set(ALL_LINEAS.filter(l=>l.status==='porsurtir').map(l=>l.folio));
     pedidos = pedidos.filter(p => foliosConAgregados.has(p.folio));
   }
@@ -995,7 +1308,6 @@ function renderPedidos() {
 
   if (SEARCH_Q) { const q=SEARCH_Q.toLowerCase(); pedidos=pedidos.filter(p=>p.folio.toLowerCase().includes(q)||p.cliente.toLowerCase().includes(q)); }
 
-  // Date filter
   if (desde) pedidos=pedidos.filter(p=>{const ts=parseDate(p.ts_registro);return ts&&ts>=new Date(desde);});
   if (hasta) pedidos=pedidos.filter(p=>{const ts=parseDate(p.ts_registro);return ts&&ts<=new Date(hasta+' 23:59:59');});
 
@@ -1064,7 +1376,6 @@ async function abrirPedido(folio) {
   document.getElementById('modal-title').innerHTML = p.folio + turnoStr;
   document.getElementById('modal-badge').innerHTML=`<span class="badge badge-${isVencido(p)?'vencido':p.status}">${isVencido(p)?'⚠ Vencido':STATUS_LABELS[p.status]}</span>`;
 
-  // Load chat and lineas
   const [chatRes, lineasRes] = await Promise.all([
     api('getChat',{folio}),
     api('getLineas',{folio})
@@ -1098,7 +1409,6 @@ async function abrirPedido(folio) {
     </div>`;
 
   document.getElementById('modal-overlay').classList.add('open');
-  // Scroll chat to bottom
   const cm=document.getElementById('chat-msgs');
   if (cm) cm.scrollTop=cm.scrollHeight;
 }
@@ -1152,14 +1462,10 @@ function buildActions(p) {
   let html='<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:18px;display:flex;flex-wrap:wrap;gap:8px;">';
 
   if ((rol==='surtidor'||rol==='admin') && p.status==='porsurtir') {
-    // Check FIFO: is this the next in queue?
     const globalQueue = buildGlobalQueue();
     const nextItem = globalQueue[0];
-    // Pedido es siguiente si es el primer item de la cola global
     const isNext = nextItem && nextItem.type==='pedido' && nextItem.folio===p.folio;
     const nextFolio = nextItem ? nextItem.folio : null;
-
-    // Check if surtidor already has an open order
     const tieneSurtiendo = rol==='surtidor' && ALL_PEDIDOS.some(x=>x.status==='surtiendo'&&x.surtidor===user);
 
     if (rol==='admin') {
@@ -1278,6 +1584,7 @@ function autocompleteCliente(val){
 }
 function selectCliente(name){document.getElementById('np-cliente').value=name;document.getElementById('ac-list').classList.remove('open');}
 document.addEventListener('click',e=>{if(!e.target.closest('.autocomplete-wrap'))document.getElementById('ac-list').classList.remove('open');});
+function attachClienteKeyboard(){}
 
 // ─── CONSULTA ─────────────────────────────────────────────────────────────────
 async function consultarPedido() {
@@ -1303,76 +1610,306 @@ async function consultarPedido() {
 }
 
 // ─── REPORTE ──────────────────────────────────────────────────────────────────
+// ─── REPORTE / ESTADÍSTICAS ───────────────────────────────────────────────────
+
+// Horario hábil: Lun-Vie 10:00-19:30 / Sáb 10:00-14:00 / Dom cerrado
+function esHorarioHabil(fecha) {
+  if (!fecha) return false;
+  const dow = fecha.getDay(); // 0=Dom, 6=Sáb
+  const h = fecha.getHours(), m = fecha.getMinutes();
+  const mins = h * 60 + m;
+  if (dow === 0) return false; // Domingo cerrado
+  if (dow >= 1 && dow <= 5) return mins >= 600 && mins <= 1170; // 10:00-19:30
+  if (dow === 6) return mins >= 600 && mins <= 840; // 10:00-14:00
+  return false;
+}
+
+// Minutos hábiles entre dos fechas
+function minutosHabiles(desde, hasta) {
+  if (!desde || !hasta || hasta <= desde) return 0;
+  let mins = 0;
+  const cur = new Date(desde);
+  // Avanzar minuto a minuto — eficiente para rangos típicos de almacén (<24h)
+  while (cur < hasta) {
+    if (esHorarioHabil(cur)) mins++;
+    cur.setMinutes(cur.getMinutes() + 1);
+  }
+  return mins;
+}
+
+function fmtMins(m) {
+  if (!m && m !== 0) return '—';
+  if (m < 60) return m + ' min';
+  return Math.floor(m / 60) + 'h ' + (m % 60) + 'min';
+}
+
+function repSetRango(tipo) {
+  const hoy = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  let desde, hasta = fmt(hoy);
+  if (tipo === 'hoy') {
+    desde = fmt(hoy);
+  } else if (tipo === 'semana') {
+    const lun = new Date(hoy); lun.setDate(hoy.getDate() - ((hoy.getDay()+6)%7));
+    desde = fmt(lun);
+  } else if (tipo === 'mes') {
+    desde = `${hoy.getFullYear()}-${pad(hoy.getMonth()+1)}-01`;
+  }
+  document.getElementById('rep-desde').value = desde;
+  document.getElementById('rep-hasta').value = hasta;
+  generarReporte();
+}
+
 async function generarReporte() {
-  showLoading('Generando reporte...');
-  const res=await api('getPedidos');
+  showLoading('Generando estadísticas...');
+  const [resPed, resLin] = await Promise.all([api('getPedidos'), api('getAllLineas')]);
   hideLoading();
-  if (!res.ok) return;
-  const pedidos=res.pedidos||[];
-  const hoy=new Date().toLocaleDateString('es-MX');
-  document.getElementById('reporte-fecha').textContent='Datos al '+hoy;
+  if (!resPed.ok) { toast('Error cargando datos','error'); return; }
 
-  const pedidosHoy=pedidos.filter(p=>{
-    const ts=parseDate(p.ts_registro);
-    return ts&&ts.toLocaleDateString('es-MX')===hoy;
-  });
-  const surtidosHoy=pedidos.filter(p=>{
-    const ts=parseDate(p.ts_surtido);
-    return ts&&ts.toLocaleDateString('es-MX')===hoy;
-  });
-  const enviadosHoy=pedidos.filter(p=>{
-    const ts=parseDate(p.ts_enviado);
-    return ts&&ts.toLocaleDateString('es-MX')===hoy;
-  });
+  const desdeVal = document.getElementById('rep-desde').value;
+  const hastaVal = document.getElementById('rep-hasta').value;
+  const desdeDate = desdeVal ? new Date(desdeVal + 'T00:00:00') : null;
+  const hastaDate = hastaVal ? new Date(hastaVal + 'T23:59:59') : null;
 
-  // Tiempo promedio de surtido (porsurtir → surtido)
-  let tiempos=[];
-  pedidos.forEach(p=>{
-    if (p.ts_registro&&p.ts_surtido) {
-      const a=parseDate(p.ts_registro), b=parseDate(p.ts_surtido);
-      if (a&&b) tiempos.push((b-a)/60000);
+  // Etiqueta del rango
+  const fmtLabel = d => d ? d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '';
+  let rangoLabel = 'Todos los registros';
+  if (desdeDate && hastaDate) rangoLabel = `Del ${fmtLabel(desdeDate)} al ${fmtLabel(hastaDate)}`;
+  else if (desdeDate) rangoLabel = `Desde ${fmtLabel(desdeDate)}`;
+  else if (hastaDate) rangoLabel = `Hasta ${fmtLabel(hastaDate)}`;
+  document.getElementById('rep-rango-label').textContent = '📅 ' + rangoLabel;
+
+  let pedidos = resPed.pedidos || [];
+
+  // Filtrar por rango
+  const enRango = p => {
+    const ts = parseDate(p.ts_registro);
+    if (!ts) return false;
+    if (desdeDate && ts < desdeDate) return false;
+    if (hastaDate && ts > hastaDate) return false;
+    return true;
+  };
+  pedidos = pedidos.filter(enRango);
+
+  if (!pedidos.length) {
+    document.getElementById('rep-kpis').innerHTML = '<div style="color:var(--ink3);padding:20px;grid-column:1/-1;text-align:center;">Sin datos en el rango seleccionado</div>';
+    ['rep-chart-horas','rep-chart-dias','rep-vendedores','rep-surtidores'].forEach(id => document.getElementById(id).innerHTML = '');
+    return;
+  }
+
+  // ── KPIs ────────────────────────────────────────────────────────────────────
+  const total     = pedidos.length;
+  const surtidos  = pedidos.filter(p => p.status === 'surtido' || p.status === 'enviado');
+  const enviados  = pedidos.filter(p => p.status === 'enviado');
+  const cancelados= pedidos.filter(p => p.status === 'cancelado');
+  const pendientes= pedidos.filter(p => p.status === 'porsurtir' || p.status === 'surtiendo');
+
+  // Tiempo de respuesta hábil: ts_registro → ts_surtiendo
+  const tiemposRespuesta = pedidos
+    .filter(p => p.ts_registro && p.ts_surtiendo)
+    .map(p => minutosHabiles(parseDate(p.ts_registro), parseDate(p.ts_surtiendo)));
+  const promRespuesta = tiemposRespuesta.length
+    ? Math.round(tiemposRespuesta.reduce((a,b)=>a+b,0) / tiemposRespuesta.length) : 0;
+
+  // Tiempo de surtido: ts_surtiendo → ts_surtido
+  const tiemposSurtido = pedidos
+    .filter(p => p.ts_surtiendo && p.ts_surtido)
+    .map(p => minutosHabiles(parseDate(p.ts_surtiendo), parseDate(p.ts_surtido)));
+  const promSurtido = tiemposSurtido.length
+    ? Math.round(tiemposSurtido.reduce((a,b)=>a+b,0) / tiemposSurtido.length) : 0;
+
+  const tasaComplecion = total > 0 ? Math.round((surtidos.length / total) * 100) : 0;
+
+  document.getElementById('rep-kpis').innerHTML = [
+    {num: total,              lbl: 'Total pedidos',         sub: `en el rango`,               color:'#4a9eff'},
+    {num: surtidos.length,    lbl: 'Completados',           sub: `${tasaComplecion}% tasa`,    color:'#00c853'},
+    {num: enviados.length,    lbl: 'Enviados / Pagados',    sub: '',                           color:'#d500f9'},
+    {num: pendientes.length,  lbl: 'Pendientes ahora',      sub: '',                           color:'#ff9800'},
+    {num: cancelados.length,  lbl: 'Cancelados',            sub: '',                           color:'#e8001a'},
+    {num: fmtMins(promRespuesta), lbl: 'Tiempo en cola',   sub: 'hora hábil',                 color:'#00bcd4', isText:true},
+    {num: fmtMins(promSurtido),   lbl: 'Tiempo surtiendo', sub: 'hora hábil',                 color:'#ffb300', isText:true},
+  ].map(k => `
+    <div class="rep-kpi" style="--kpi-color:${k.color}">
+      <div class="rep-kpi-num" style="${k.isText?'font-size:26px;':''}color:${k.color}">${k.num}</div>
+      <div class="rep-kpi-lbl">${k.lbl}</div>
+      ${k.sub ? `<div class="rep-kpi-sub">${k.sub}</div>` : ''}
+    </div>`).join('');
+
+  // ── GRÁFICA POR HORA ────────────────────────────────────────────────────────
+  // Horas hábiles: 10-19 Lun-Vie, 10-13 Sáb
+  const byHora = {};
+  for (let h = 10; h <= 19; h++) byHora[h] = 0;
+  pedidos.forEach(p => {
+    const ts = parseDate(p.ts_registro);
+    if (!ts) return;
+    const h = ts.getHours();
+    if (byHora[h] !== undefined) byHora[h]++;
+  });
+  const maxHora = Math.max(...Object.values(byHora), 1);
+  const horasLabels = Object.keys(byHora);
+  document.getElementById('rep-chart-horas').innerHTML = `
+    <div class="bar-chart-title">📊 Pedidos por hora (horario hábil)</div>
+    <div class="bar-group">
+      ${horasLabels.map(h => {
+        const val = byHora[h];
+        const pct = Math.round((val / maxHora) * 85);
+        const color = val === maxHora ? '#e8001a' : '#4a9eff';
+        return `<div class="bar" style="height:${pct||2}px;background:${color};" data-val="${val}" title="${h}:00 — ${val} pedidos"></div>`;
+      }).join('')}
+    </div>
+    <div class="bar-labels">
+      ${horasLabels.map(h => `<div class="bar-lbl">${h}</div>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Hora del día</div>`;
+
+  // ── GRÁFICA POR DÍA DE SEMANA ────────────────────────────────────────────────
+  const diasNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const byDia = {1:0,2:0,3:0,4:0,5:0,6:0}; // sin domingo
+  pedidos.forEach(p => {
+    const ts = parseDate(p.ts_registro);
+    if (!ts) return;
+    const d = ts.getDay();
+    if (byDia[d] !== undefined) byDia[d]++;
+  });
+  const maxDia = Math.max(...Object.values(byDia), 1);
+  document.getElementById('rep-chart-dias').innerHTML = `
+    <div class="bar-chart-title">📅 Pedidos por día de semana</div>
+    <div class="bar-group">
+      ${Object.entries(byDia).map(([d, val]) => {
+        const pct = Math.round((val / maxDia) * 85);
+        const color = val === maxDia ? '#00c853' : '#4a9eff';
+        return `<div class="bar" style="height:${pct||2}px;background:${color};" data-val="${val}" title="${diasNames[d]} — ${val} pedidos"></div>`;
+      }).join('')}
+    </div>
+    <div class="bar-labels">
+      ${Object.keys(byDia).map(d => `<div class="bar-lbl">${diasNames[d]}</div>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Día de la semana</div>`;
+
+  // ── RANKING VENDEDORES ───────────────────────────────────────────────────────
+  const porVendedor = {};
+  pedidos.forEach(p => {
+    if (!p.vendedor) return;
+    if (!porVendedor[p.vendedor]) porVendedor[p.vendedor] = {total:0, completados:0, cancelados:0, tiemposResp:[]};
+    porVendedor[p.vendedor].total++;
+    if (p.status === 'surtido' || p.status === 'enviado') porVendedor[p.vendedor].completados++;
+    if (p.status === 'cancelado') porVendedor[p.vendedor].cancelados++;
+    if (p.ts_registro && p.ts_surtiendo) {
+      const m = minutosHabiles(parseDate(p.ts_registro), parseDate(p.ts_surtiendo));
+      porVendedor[p.vendedor].tiemposResp.push(m);
     }
   });
-  const promMins=tiempos.length?Math.round(tiempos.reduce((s,v)=>s+v,0)/tiempos.length):0;
-  const promStr=promMins<60?promMins+'min':Math.floor(promMins/60)+'h '+promMins%60+'min';
+  const vendedoresSorted = Object.entries(porVendedor)
+    .map(([v,d]) => ({
+      vendedor: v,
+      ...d,
+      promResp: d.tiemposResp.length ? Math.round(d.tiemposResp.reduce((a,b)=>a+b,0)/d.tiemposResp.length) : null
+    }))
+    .sort((a,b) => b.total - a.total);
+  const maxVTotal = vendedoresSorted[0]?.total || 1;
+  const posColors = ['gold','silver','bronze'];
 
-  document.getElementById('reporte-grid').innerHTML=`
-    <div class="rep-card"><div class="rep-num">${pedidosHoy.length}</div><div class="rep-lbl">Pedidos registrados hoy</div></div>
-    <div class="rep-card"><div class="rep-num">${surtidosHoy.length}</div><div class="rep-lbl">Surtidos hoy</div></div>
-    <div class="rep-card"><div class="rep-num">${enviadosHoy.length}</div><div class="rep-lbl">Enviados hoy</div></div>
-    <div class="rep-card"><div class="rep-num">${promStr}</div><div class="rep-lbl">Tiempo promedio surtido</div><div class="rep-sub">Histórico total</div></div>
-    <div class="rep-card"><div class="rep-num">${pedidos.filter(p=>p.status==='porsurtir').length}</div><div class="rep-lbl">Pendientes por surtir</div></div>
-    <div class="rep-card"><div class="rep-num">${pedidos.filter(p=>isVencido(p)).length}</div><div class="rep-lbl" style="color:var(--red)">Vencidos ahora</div></div>
-  `;
+  document.getElementById('rep-vendedores').innerHTML = `
+    <div style="font-weight:600;font-size:15px;margin-bottom:4px;">🏆 Ranking Vendedores</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;">Por volumen de pedidos en el rango</div>
+    <table class="rank-table">
+      <thead><tr>
+        <th style="width:40px;">#</th>
+        <th>Vendedor</th>
+        <th>Total</th>
+        <th>Completados</th>
+        <th>% Éxito</th>
+        <th>Cancelados</th>
+        <th>T. espera prom.</th>
+        <th style="min-width:120px;">Volumen</th>
+      </tr></thead>
+      <tbody>${vendedoresSorted.map((v,i) => `
+        <tr>
+          <td class="rank-pos ${posColors[i]||''}">${i+1}</td>
+          <td style="font-weight:600;">${v.vendedor}</td>
+          <td style="font-family:var(--font-mono);font-size:15px;font-weight:700;">${v.total}</td>
+          <td style="color:var(--green);">${v.completados}</td>
+          <td>${v.total > 0 ? Math.round(v.completados/v.total*100) : 0}%</td>
+          <td style="color:${v.cancelados>0?'var(--red)':'var(--ink3)'};">${v.cancelados}</td>
+          <td style="font-family:var(--font-mono);font-size:12px;">${fmtMins(v.promResp)}</td>
+          <td>
+            <div class="inline-bar">
+              <div class="inline-bar-fill" style="width:${Math.round(v.total/maxVTotal*100)}%;background:#4a9eff;"></div>
+            </div>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--ink3);padding:16px;">Sin datos</td></tr>'}
+      </tbody>
+    </table>`;
 
-  // Por surtidor
-  const porSurtidor={};
-  pedidos.filter(p=>p.surtidor).forEach(p=>{
-    if (!porSurtidor[p.surtidor]) porSurtidor[p.surtidor]={tomados:0,surtidos:0};
+  // ── RANKING SURTIDORES ───────────────────────────────────────────────────────
+  const porSurtidor = {};
+  pedidos.filter(p => p.surtidor).forEach(p => {
+    if (!porSurtidor[p.surtidor]) porSurtidor[p.surtidor] = {tomados:0, completados:0, tiemposSurt:[], tiemposTotal:[]};
     porSurtidor[p.surtidor].tomados++;
-    if (p.status==='surtido'||p.status==='enviado') porSurtidor[p.surtidor].surtidos++;
+    if (p.status === 'surtido' || p.status === 'enviado') {
+      porSurtidor[p.surtidor].completados++;
+      if (p.ts_surtiendo && p.ts_surtido) {
+        const m = minutosHabiles(parseDate(p.ts_surtiendo), parseDate(p.ts_surtido));
+        porSurtidor[p.surtidor].tiemposSurt.push(m);
+      }
+      if (p.ts_registro && p.ts_surtido) {
+        const m = minutosHabiles(parseDate(p.ts_registro), parseDate(p.ts_surtido));
+        porSurtidor[p.surtidor].tiemposTotal.push(m);
+      }
+    }
   });
-  document.getElementById('reporte-detalle').innerHTML=`
-    <div style="font-weight:600;font-size:15px;margin-bottom:14px;">Rendimiento por Surtidor</div>
-    <table class="data-table">
-      <thead><tr><th>Surtidor</th><th>Pedidos tomados</th><th>Completados</th></tr></thead>
-      <tbody>${Object.entries(porSurtidor).map(([s,d])=>`
-        <tr><td>${s}</td><td>${d.tomados}</td><td>${d.surtidos}</td></tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:var(--ink3)">Sin datos</td></tr>'}
+  const surtidoresSorted = Object.entries(porSurtidor)
+    .map(([s,d]) => ({
+      surtidor: s, ...d,
+      promSurt:  d.tiemposSurt.length  ? Math.round(d.tiemposSurt.reduce((a,b)=>a+b,0)/d.tiemposSurt.length)  : null,
+      promTotal: d.tiemposTotal.length ? Math.round(d.tiemposTotal.reduce((a,b)=>a+b,0)/d.tiemposTotal.length) : null,
+    }))
+    .sort((a,b) => b.completados - a.completados);
+  const maxSComp = surtidoresSorted[0]?.completados || 1;
+
+  document.getElementById('rep-surtidores').innerHTML = `
+    <div style="font-weight:600;font-size:15px;margin-bottom:4px;">⚡ Rendimiento Surtidores</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;">Velocidad y volumen en horario hábil</div>
+    <table class="rank-table">
+      <thead><tr>
+        <th style="width:40px;">#</th>
+        <th>Surtidor</th>
+        <th>Tomados</th>
+        <th>Completados</th>
+        <th>% Éxito</th>
+        <th>T. surtido prom.</th>
+        <th>T. total prom.</th>
+        <th style="min-width:120px;">Volumen</th>
+      </tr></thead>
+      <tbody>${surtidoresSorted.map((s,i) => `
+        <tr>
+          <td class="rank-pos ${posColors[i]||''}">${i+1}</td>
+          <td style="font-weight:600;">${s.surtidor}</td>
+          <td style="font-family:var(--font-mono);font-size:15px;font-weight:700;">${s.tomados}</td>
+          <td style="color:var(--green);font-weight:600;">${s.completados}</td>
+          <td>${s.tomados > 0 ? Math.round(s.completados/s.tomados*100) : 0}%</td>
+          <td style="font-family:var(--font-mono);font-size:12px;">${fmtMins(s.promSurt)}</td>
+          <td style="font-family:var(--font-mono);font-size:12px;">${fmtMins(s.promTotal)}</td>
+          <td>
+            <div class="inline-bar">
+              <div class="inline-bar-fill" style="width:${Math.round(s.completados/maxSComp*100)}%;background:#00c853;"></div>
+            </div>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--ink3);padding:16px;">Sin datos de surtidores</td></tr>'}
       </tbody>
     </table>`;
 }
+
 
 // ─── EXPORTAR EXCEL ───────────────────────────────────────────────────────────
 function exportarExcel() {
   let pedidos=[...ALL_PEDIDOS];
   if (SESSION.rol==='vendedor') pedidos=pedidos.filter(p=>p.vendedor===SESSION.username);
-
   const headers=['Folio','Cliente','Notas','Vendedor','Estado','Registrado','Tomado','Surtido','Enviado','Cancelado','Surtidor','Rack','Cancelado Por'];
   const rows=pedidos.map(p=>[p.folio,p.cliente,p.notas,p.vendedor,p.status,p.ts_registro,p.ts_surtiendo,p.ts_surtido,p.ts_enviado,p.ts_cancelado,p.surtidor,p.rack,p.cancelado_por]);
-
   let csv=headers.join(',')+'\n';
   rows.forEach(r=>{ csv+=r.map(v=>`"${(v||'').replace(/"/g,'""')}"`).join(',')+'\n'; });
-
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -1385,7 +1922,6 @@ async function cargarUsuariosAdmin() {
   const res=await api('getUsuarios');
   if (!res.ok) return;
   ALL_USERS=res.usuarios||[];
-  // Populate password change select
   const sel=document.getElementById('cp-usuario');
   if (sel) sel.innerHTML=ALL_USERS.map(u=>`<option value="${u.usuario}">${u.nombre} (${u.rol})</option>`).join('');
   renderUsersTable();
@@ -1477,7 +2013,6 @@ async function buscarFolioAgregar() {
   const lineasDiv = document.getElementById('ag-lineas');
   if (folio.length < 2) { infoDiv.style.display='none'; formDiv.style.display='none'; lineasDiv.innerHTML=''; AG_PEDIDO=null; return; }
 
-  // buscar en pedidos — siempre recarga para tener datos frescos
   showLoading('Buscando...');
   const resP = await api('getPedidos');
   hideLoading();
@@ -1495,7 +2030,6 @@ async function buscarFolioAgregar() {
   infoDiv.innerHTML=`<strong>${p.cliente}</strong> — Vendedor: ${p.vendedor} &nbsp;<span class="badge badge-${p.status}">${STATUS_LABELS[p.status]}</span>`;
   formDiv.style.display='block';
 
-  // cargar lineas existentes
   const lineasRes = await api('getLineas',{folio});
   const lineas = lineasRes.ok ? lineasRes.lineas : [];
   if (lineas.length) {
@@ -1516,7 +2050,7 @@ async function agregarLinea() {
     toast('Línea agregada al folio '+AG_PEDIDO.folio,'success');
     document.getElementById('ag-nota').value='';
     addNotif(`Nueva línea en folio ${AG_PEDIDO.folio}`, AG_PEDIDO.cliente);
-    buscarFolioAgregar(); // refresh
+    buscarFolioAgregar();
   } else toast(res.error,'error');
 }
 
@@ -1567,13 +2101,12 @@ async function tomarLinea(id) {
   hideLoading();
   if (res.ok) {
     toast('Línea tomada','success');
-    await cargarPedidos(); // refreshes ALL_LINEAS too
+    await cargarPedidos();
     abrirPedido(CURRENT_FOLIO);
   } else toast(res.error,'error');
 }
 
 async function surtirLineaRack(id, rack, btn) {
-  // Visual feedback
   btn.parentElement.querySelectorAll('button').forEach(b=>{b.style.background='var(--bg)';b.style.borderColor='var(--border)';b.style.color='var(--ink)';});
   btn.style.background='var(--ink)';btn.style.borderColor='var(--ink)';btn.style.color='#fff';
   if (!confirm(`¿Confirmar surtido en Rack ${rack}?`)) return;
@@ -1591,9 +2124,8 @@ function getDisplayStatus(p) {
   return p.status;
 }
 
-// ─── COLA GLOBAL (pedidos + lineas mezclados por consecutivo) ────────────────
+// ─── COLA GLOBAL ─────────────────────────────────────────────────────────────
 function buildGlobalQueue() {
-  // Pedidos porsurtir — urgentes van primero (consecutivo=-1)
   const pedidosQueue = ALL_PEDIDOS
     .filter(x => x.status==='porsurtir')
     .map(x => ({
@@ -1602,7 +2134,6 @@ function buildGlobalQueue() {
       folio: x.folio,
       consecutivo: String(x.urgente)==='true' ? -1 : (parseInt(x.consecutivo)||9999)
     }));
-  // Lineas porsurtir — entran a la cola global por su consecutivo
   const lineasQueue = ALL_LINEAS
     .filter(x => x.status==='porsurtir')
     .map(x => ({
@@ -1614,16 +2145,7 @@ function buildGlobalQueue() {
   return [...pedidosQueue, ...lineasQueue].sort((a,b) => a.consecutivo - b.consecutivo);
 }
 
-// ─── FOLIO CONSECUTIVO ───────────────────────────────────────────────────────
-async function cargarFolioPreview() {
-  const res=await api('getNextFolio');
-  const el=document.getElementById('np-folio-preview');
-  if (el && res.ok) el.textContent=res.folio;
-}
-
 // ─── URGENTE / COLA ───────────────────────────────────────────────────────────
-const URGENCIA_KEY = 'urgencia_pass';
-
 async function marcarUrgente(folio) {
   const pass = prompt('Contraseña de urgencia:');
   if (!pass) return;
@@ -1634,7 +2156,6 @@ async function marcarUrgente(folio) {
   hideLoading();
   if (res.ok) { toast(`Pedido ${folio} adelantado en cola`,'success'); closeModal(); await cargarPedidos(); }
   else {
-    // Si el servidor rechaza pero la clave local es correcta, igual adelanta en vista
     toast(`Pedido ${folio} adelantado en cola`,'success');
     closeModal(); await cargarPedidos();
   }
@@ -1665,7 +2186,6 @@ function renderAlmacen() {
   if (!grid) return;
   let pedidos = [...ALL_PEDIDOS];
   if (ALM_FILTER !== 'todos') pedidos = pedidos.filter(p => p.status === ALM_FILTER);
-  // Sort: porsurtir first by consecutivo, then others
   pedidos.sort((a,b) => {
     const order = {porsurtir:0, surtiendo:1, surtido:2, enviado:3, cancelado:4};
     const oa = order[a.status]??5, ob = order[b.status]??5;
@@ -1735,8 +2255,7 @@ function renderAlmacen() {
 
 function buildAlmacenCard(p) {
   const cola = buildGlobalQueue();
-  const siguiente = cola[0]; // El primero en la cola global
-
+  const siguiente = cola[0];
   const statusColor = {porsurtir:'var(--orange)',surtiendo:'#4a9eff',surtido:'var(--green)',enviado:'var(--purple)',cancelado:'var(--ink3)'};
   const borderColor = statusColor[p.status] || 'var(--border)';
   const ds = getDisplayStatus(p);
@@ -1747,10 +2266,8 @@ function buildAlmacenCard(p) {
   if (p.status === 'porsurtir') {
     const esSiguiente = siguiente && siguiente.type === 'pedido' && siguiente.id === p.folio;
     if (esSiguiente) {
-      // Es el siguiente — botón verde disponible
       accionHtml = `<button class="btn btn-success" style="width:100%;margin-top:12px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar pedido</button>`;
     } else {
-      // No es el siguiente — bloqueado, solo admin puede adelantar
       const pos = cola.findIndex(x => x.type==='pedido' && x.id===p.folio);
       const posLabel = pos >= 0 ? `#${pos+1}` : '?';
       const sigLabel = siguiente ? (siguiente.type==='pedido' ? siguiente.folio : 'Línea') : '—';
@@ -1768,7 +2285,6 @@ function buildAlmacenCard(p) {
     accionHtml = `<div style="font-size:12px;color:var(--green);margin-top:8px;">✔ Surtido en Rack ${p.rack} por ${p.surtidor}</div>`;
   }
 
-  // Lineas activas (porsurtir y surtiendo)
   const lineasActivas = ALL_LINEAS.filter(l => l.folio === p.folio && (l.status === 'porsurtir' || l.status === 'surtiendo'));
   const lineasHtml = lineasActivas.length ? `
     <div style="margin-top:10px;padding:8px;background:var(--surface2);border-radius:var(--radius);font-size:12px;">
@@ -1810,7 +2326,6 @@ function buildAlmacenCard(p) {
   </div>`;
 }
 
-// Modal para que surtidor ingrese su clave en pantalla almacén
 function almTomarPedido(folio) {
   almPedirClave('¿Quién toma el pedido ' + folio + '?', async (usuario, pass) => {
     showLoading('Verificando...');
@@ -1818,12 +2333,10 @@ function almTomarPedido(folio) {
     if (!loginRes.ok || (loginRes.rol !== 'surtidor' && loginRes.rol !== 'admin')) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
-    // Recargar datos frescos antes de validar
     showLoading('Verificando cola...');
     await cargarPedidos();
     hideLoading();
 
-    // Verificar que el surtidor no tenga un pedido/línea en curso (surtiendo)
     if (loginRes.rol !== 'admin') {
       const enCurso = ALL_PEDIDOS.find(x => x.surtidor === usuario && x.status === 'surtiendo') ||
                       ALL_LINEAS.find(x => x.surtidor === usuario && x.status === 'surtiendo');
@@ -1835,7 +2348,6 @@ function almTomarPedido(folio) {
       }
     }
 
-    // Verificar FIFO — solo admin puede saltarse la cola
     if (loginRes.rol !== 'admin') {
       const cola = buildGlobalQueue();
       const siguiente = cola[0];
@@ -1869,7 +2381,6 @@ function almSurtirLinea(id, surtidorAsignado) {
     const loginRes = await api('login', {usuario, password: pass});
     if (!loginRes.ok) { hideLoading(); toast('Contraseña incorrecta', 'error'); return; }
     hideLoading();
-    // Show rack selector for linea
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `<div style="background:var(--surface);border-radius:12px;padding:28px;max-width:400px;width:90%;">
@@ -1902,7 +2413,6 @@ function almSurtirPedido(folio, surtidorAsignado) {
     showLoading('Verificando...');
     const loginRes = await api('login', {usuario, password: pass});
     if (!loginRes.ok) { hideLoading(); toast('Contraseña incorrecta', 'error'); return; }
-    // Show rack selector
     hideLoading();
     almElegirRack(folio, usuario);
   });
@@ -1915,7 +2425,6 @@ function almTomarLinea(id) {
     if (!loginRes.ok || (loginRes.rol !== 'surtidor' && loginRes.rol !== 'admin')) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
-    // Recargar datos frescos antes de validar
     showLoading('Verificando cola...');
     await cargarPedidos();
     hideLoading();
@@ -1983,7 +2492,6 @@ function almPedirAutorizacionAdmin(item, siguiente, surtidor, callback) {
 }
 
 function almElegirRack(folio, surtidor) {
-  // Show rack modal
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
   overlay.innerHTML = `<div style="background:var(--surface);border-radius:12px;padding:28px;max-width:400px;width:90%;box-shadow:var(--shadow-lg);">
