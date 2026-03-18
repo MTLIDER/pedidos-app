@@ -199,6 +199,8 @@ body{overflow-x:hidden;}
 .badge-enviado{background:#e2d9f3;color:#3d0a91;border:1px solid #6f42c1;}
 .badge-cancelado{background:#f8d7da;color:#58151c;border:1px solid #dc3545;}
 .badge-vencido{background:#ffe0cc;color:#7a2800;border:1px solid #ff6b35;}
+.badge-vencido_surtido{background:#3d0a00;color:#ff6b35;border:1.5px solid #ff4500;animation:pulseOrange 2s infinite;}
+@keyframes pulseOrange{0%,100%{border-color:#ff4500;box-shadow:0 0 0 0 rgba(255,69,0,.4)}50%{border-color:#ff8c00;box-shadow:0 0 0 4px rgba(255,69,0,0)}}
 /* VIEW TOGGLE */
 .view-toggle{display:flex;gap:4px;background:var(--surface2);padding:3px;border-radius:var(--radius);}
 .view-btn{padding:6px 10px;border:none;background:none;border-radius:4px;cursor:pointer;font-size:14px;color:var(--ink3);transition:all .15s;}
@@ -227,6 +229,9 @@ body{overflow-x:hidden;}
 .pedido-card.enviado::before{background:#6f42c1;}
 .pedido-card.cancelado::before{background:#dc3545;}
 .pedido-card.vencido::before{background:#ff6b35;}
+.pedido-card.vencido_surtido::before{background:#ff4500;background:repeating-linear-gradient(45deg,#ff4500,#ff4500 4px,#ff8c00 4px,#ff8c00 8px);}
+.pedido-card.vencido_surtido{border-color:#ff4500!important;animation:cardPulseOrange 3s ease-in-out infinite;}
+@keyframes cardPulseOrange{0%,100%{box-shadow:0 0 0 0 rgba(255,69,0,.2)}50%{box-shadow:0 0 0 6px rgba(255,69,0,0)}}
 .pedido-card:hover{border-color:var(--ink);box-shadow:var(--shadow);transform:translateY(-1px);}
 .pedido-folio{font-family:var(--font-mono);font-size:17px;font-weight:500;color:var(--ink);margin-bottom:4px;}
 .pedido-cliente{font-size:14px;font-weight:600;margin-bottom:8px;}
@@ -252,6 +257,7 @@ body{overflow-x:hidden;}
 .stat-box.s-surtido .stat-num{color:#0a3622;}
 .stat-box.s-enviado .stat-num{color:#3d0a91;}
 .stat-box.s-vencido .stat-num{color:#c8401a;}
+.stat-box.s-vencido_surtido .stat-num{color:#ff4500;}
 .stat-box.s-agregado .stat-num{color:#0066cc;}
 /* MODAL */
 .modal-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(11,25,41,.72);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:16px;}
@@ -577,7 +583,26 @@ body{overflow-x:hidden;}
       <!-- Ranking vendedores -->
       <div class="card" style="margin-bottom:16px;" id="rep-vendedores"></div>
       <!-- Ranking surtidores -->
-      <div class="card" id="rep-surtidores"></div>
+      <div class="card" style="margin-bottom:16px;" id="rep-surtidores"></div>
+
+      <!-- ── SECCIÓN ENVIADOS ── -->
+      <div style="display:flex;align-items:center;gap:10px;margin:28px 0 14px;">
+        <div style="flex:1;height:2px;background:linear-gradient(90deg,var(--brand-green,#7dc242),transparent);"></div>
+        <span style="font-family:var(--font-display);font-size:22px;letter-spacing:2px;color:var(--brand-green,#7dc242);white-space:nowrap;">📦 ANÁLISIS DE ENVÍOS</span>
+        <div style="flex:1;height:2px;background:linear-gradient(270deg,var(--brand-green,#7dc242),transparent);"></div>
+      </div>
+
+      <!-- KPIs de enviados -->
+      <div id="rep-kpis-enviados" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+      <!-- Gráficas de enviados -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;" id="rep-charts-enviados">
+        <div class="card" id="rep-chart-env-horas" style="padding:18px;"></div>
+        <div class="card" id="rep-chart-env-dias" style="padding:18px;"></div>
+      </div>
+
+      <!-- Top vendedores por envíos -->
+      <div class="card" id="rep-enviados-vendedor"></div>
     </div>
 
     <!-- PANEL: ADMIN -->
@@ -618,15 +643,22 @@ body{overflow-x:hidden;}
 
       <!-- Alerta tiempo límite -->
       <div class="card" style="margin-bottom:16px;">
-        <div style="font-weight:600;font-size:15px;margin-bottom:12px;">⏱ Alerta de tiempo límite</div>
-        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="font-weight:600;font-size:15px;margin-bottom:12px;">⏱ Alertas de tiempo límite</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
           <div class="form-field">
-            <label>Alertar si pedido lleva más de (horas)</label>
-            <input type="number" id="cfg-horas" value="2" min="1" max="72" style="width:120px;">
+            <label>Alerta cola — pedido sin surtir más de (horas)</label>
+            <input type="number" id="cfg-horas" value="2" min="1" max="72" style="width:130px;">
+          </div>
+          <div class="form-field">
+            <label>Vencido surtido — días sin enviarse <span style="color:#ff4500;">(fijo: 15 días)</span></label>
+            <input type="number" value="15" disabled style="width:100px;opacity:.6;cursor:not-allowed;">
           </div>
           <button class="btn btn-primary" onclick="guardarConfigAlerta()">Guardar</button>
         </div>
-        <p style="font-size:12px;color:var(--ink3);margin-top:8px;">Los pedidos vencidos aparecerán con borde naranja y generarán notificación al admin y al vendedor.</p>
+        <p style="font-size:12px;color:var(--ink3);margin-top:10px;">
+          🟡 Pedidos en cola vencidos → borde naranja.<br>
+          🔴 Pedidos surtidos con 15+ días sin enviarse → borde rojo pulsante, aparecen en filtro "Surtido Vencido" para revisión y posible cancelación.
+        </p>
       </div>
 
       <!-- Cambiar contraseña -->
@@ -762,11 +794,12 @@ let VIEW_MODE = localStorage.getItem('pedidos_view') || 'cards';
 let DARK_MODE = localStorage.getItem('pedidos_dark') === '1';
 let NOTIFS = JSON.parse(localStorage.getItem('pedidos_notifs') || '[]');
 let HORAS_LIMITE = parseInt(localStorage.getItem('pedidos_horas') || '2');
+const DIAS_SURTIDO_LIMITE = 15; // Pedidos surtidos con 15+ días → vencidos por cobrar
 let CLIENT_CACHE = [];
 let DATE_DESDE = '';
 let DATE_HASTA = '';
 const RACKS = ['A','B','C','D','E','F','G','H','I','J'];
-const STATUS_LABELS = {porsurtir:'Por Surtir',agregado:'+ Agregado x Surtir',surtiendo:'Surtiendo',surtido:'Surtido',enviado:'Enviado',cancelado:'Cancelado',vencido:'Vencido'};
+const STATUS_LABELS = {porsurtir:'Por Surtir',agregado:'+ Agregado x Surtir',surtiendo:'Surtiendo',surtido:'Surtido',enviado:'Enviado',cancelado:'Cancelado',vencido:'Vencido',vencido_surtido:'Surtido Vencido'};
 const DEMO_USERS = [
   {usuario:'admin',password:'admin123',nombre:'Administrador',rol:'admin',activo:'SI'},
   {usuario:'vendedor1',password:'vend123',nombre:'Carlos López',rol:'vendedor',activo:'SI'},
@@ -1201,18 +1234,36 @@ function checkNotifications(prev, curr) {
 }
 
 function checkVencidos() {
-  ALL_PEDIDOS.forEach(p=>{
-    if (p.status!=='porsurtir') return;
-    const ts=parseDate(p.ts_registro);
-    if (!ts) return;
-    const horas=(Date.now()-ts.getTime())/3600000;
-    if (horas>HORAS_LIMITE) {
-      const afecta=SESSION.rol==='admin'||(SESSION.rol==='vendedor'&&p.vendedor===SESSION.username);
-      if (afecta) {
-        const key='venc_'+p.folio;
-        if (!localStorage.getItem(key)) {
-          addNotif(`⏱ Pedido ${p.folio} lleva +${Math.round(horas)}h sin surtir`,p.cliente);
-          localStorage.setItem(key,'1');
+  ALL_PEDIDOS.forEach(p => {
+    // ── Vencido tipo 1: porsurtir que lleva más de HORAS_LIMITE horas en cola ──
+    if (p.status === 'porsurtir') {
+      const ts = parseDate(p.ts_registro);
+      if (!ts) return;
+      const horas = (Date.now() - ts.getTime()) / 3600000;
+      if (horas > HORAS_LIMITE) {
+        const afecta = SESSION.rol==='admin' || (SESSION.rol==='vendedor' && p.vendedor===SESSION.username);
+        if (afecta) {
+          const key = 'venc_' + p.folio;
+          if (!localStorage.getItem(key)) {
+            addNotif(`⏱ Pedido ${p.folio} lleva +${Math.round(horas)}h sin surtir`, p.cliente);
+            localStorage.setItem(key, '1');
+          }
+        }
+      }
+    }
+    // ── Vencido tipo 2: surtido con 15+ días sin enviarse — a revisión ──────
+    if (p.status === 'surtido') {
+      const ts = parseDate(p.ts_surtido);
+      if (!ts) return;
+      const dias = (Date.now() - ts.getTime()) / 86400000;
+      if (dias >= DIAS_SURTIDO_LIMITE) {
+        const afecta = SESSION.rol==='admin' || (SESSION.rol==='vendedor' && p.vendedor===SESSION.username);
+        if (afecta) {
+          const key = 'venc_surt_' + p.folio;
+          if (!localStorage.getItem(key)) {
+            addNotif(`🔴 Pedido ${p.folio} lleva ${Math.floor(dias)} días surtido sin enviarse — requiere revisión`, p.cliente);
+            localStorage.setItem(key, '1');
+          }
         }
       }
     }
@@ -1226,11 +1277,27 @@ function parseDate(str) {
   return new Date(str);
 }
 
+// Vencido tipo 1: pedido en cola sin surtir demasiado tiempo
 function isVencido(p) {
-  if (p.status!=='porsurtir') return false;
-  const ts=parseDate(p.ts_registro);
+  if (p.status !== 'porsurtir') return false;
+  const ts = parseDate(p.ts_registro);
   if (!ts) return false;
-  return (Date.now()-ts.getTime())/3600000>HORAS_LIMITE;
+  return (Date.now() - ts.getTime()) / 3600000 > HORAS_LIMITE;
+}
+
+// Vencido tipo 2: pedido surtido que lleva 15+ días sin enviarse
+function isVencidoSurtido(p) {
+  if (p.status !== 'surtido') return false;
+  const ts = parseDate(p.ts_surtido);
+  if (!ts) return false;
+  return (Date.now() - ts.getTime()) / 86400000 >= DIAS_SURTIDO_LIMITE;
+}
+
+// Días transcurridos desde que se surtió
+function diasDesdeSurtido(p) {
+  const ts = parseDate(p.ts_surtido);
+  if (!ts) return 0;
+  return Math.floor((Date.now() - ts.getTime()) / 86400000);
 }
 
 // ─── NOTIFICACIONES ───────────────────────────────────────────────────────────
@@ -1268,7 +1335,7 @@ function markRead(i) {
 
 function clearNotifs() {
   NOTIFS=[];localStorage.setItem('pedidos_notifs','[]');
-  Object.keys(localStorage).filter(k=>k.startsWith('venc_')).forEach(k=>localStorage.removeItem(k));
+  Object.keys(localStorage).filter(k=>k.startsWith('venc_')||k.startsWith('venc_surt_')).forEach(k=>localStorage.removeItem(k));
   renderNotifBadge(); renderNotifPanel();
 }
 
@@ -1310,17 +1377,18 @@ function renderPedidos() {
   const desde=document.getElementById('df-desde')?.value;
   const hasta=document.getElementById('df-hasta')?.value;
 
-  const counts={porsurtir:0,agregado:0,surtiendo:0,surtido:0,enviado:0,vencido:0};
+  const counts={porsurtir:0,agregado:0,surtiendo:0,surtido:0,enviado:0,vencido:0,vencido_surtido:0};
   const foliosAgregados = new Set(ALL_LINEAS.filter(l=>l.status==='porsurtir').map(l=>l.folio));
   ALL_PEDIDOS.forEach(p=>{
     if (isVencido(p)) counts.vencido++;
+    else if (isVencidoSurtido(p)) counts.vencido_surtido++;
     else if (foliosAgregados.has(p.folio)) counts.agregado++;
     else if (counts[p.status]!==undefined) counts[p.status]++;
   });
   document.getElementById('stats-row').innerHTML=Object.entries(counts).map(([k,v])=>`
     <div class="stat-box s-${k}"><div class="stat-num">${v}</div><div class="stat-lbl">${STATUS_LABELS[k]||k}</div></div>`).join('');
 
-  const statuses=['todos','porsurtir','agregado','surtiendo','surtido','enviado','cancelado','vencido'];
+  const statuses=['todos','porsurtir','agregado','surtiendo','surtido','enviado','cancelado','vencido','vencido_surtido'];
   document.getElementById('filter-tabs').innerHTML=statuses.map(s=>`
     <button class="filter-tab ${FILTER_STATUS===s?'active':''}" onclick="setFilter('${s}')">${s==='todos'?'Todos':STATUS_LABELS[s]}</button>`).join('');
 
@@ -1329,6 +1397,7 @@ function renderPedidos() {
   else if (SESSION.rol==='surtidor') pedidos=pedidos.filter(p=>p.status==='porsurtir'||p.surtidor===SESSION.username);
 
   if (FILTER_STATUS==='vencido') pedidos=pedidos.filter(p=>isVencido(p));
+  else if (FILTER_STATUS==='vencido_surtido') pedidos=pedidos.filter(p=>isVencidoSurtido(p));
   else if (FILTER_STATUS==='agregado') {
     const foliosConAgregados = new Set(ALL_LINEAS.filter(l=>l.status==='porsurtir').map(l=>l.folio));
     pedidos = pedidos.filter(p => foliosConAgregados.has(p.folio));
@@ -1354,27 +1423,36 @@ function renderPedidos() {
       <thead><tr><th>Folio</th><th>Cliente</th><th>Vendedor</th><th>Estado</th><th>Rack</th><th>Surtidor</th><th>Registrado</th><th>Tiempo</th></tr></thead>
       <tbody>${pedidos.map(p=>{
         const venc=isVencido(p);
+        const vencSurt=isVencidoSurtido(p);
         const ts=parseDate(p.ts_registro);
         const mins=ts?Math.round((Date.now()-ts.getTime())/60000):0;
         const tiempoStr=mins<60?mins+'min':Math.round(mins/60)+'h '+mins%60+'min';
-        return `<tr onclick="abrirPedido('${p.folio}')">
+        const diasSurt = vencSurt ? diasDesdeSurtido(p) : 0;
+        const displayKey = venc?'vencido':vencSurt?'vencido_surtido':getDisplayStatus(p);
+        const displayLbl = venc?'⚠ Vencido':vencSurt?`🔴 ${diasSurt}d sin enviar`:STATUS_LABELS[getDisplayStatus(p)]||STATUS_LABELS[p.status];
+        return `<tr onclick="abrirPedido('${p.folio}')" style="${vencSurt?'background:rgba(255,69,0,.06);':''}">
           <td><span style="font-size:10px;background:var(--accent);color:#fff;padding:1px 6px;border-radius:3px;font-weight:700;margin-right:6px;">${p.turno||'#?'}</span><span style="font-family:var(--font-mono)">${p.folio}</span></td>
           <td><strong>${p.cliente}</strong></td>
           <td>${p.vendedor}</td>
-          <td><span class="badge badge-${venc?'vencido':getDisplayStatus(p)}">${venc?'Vencido':STATUS_LABELS[getDisplayStatus(p)]||STATUS_LABELS[p.status]}</span></td>
+          <td><span class="badge badge-${displayKey}">${displayLbl}</span></td>
           <td>${p.rack||'—'}</td>
           <td>${p.surtidor||'—'}</td>
           <td style="font-size:11px;color:var(--ink3)">${p.ts_registro}</td>
-          <td style="font-size:11px;color:${mins>HORAS_LIMITE*60?'var(--red)':'var(--ink3)'}">${p.status==='porsurtir'||p.status==='surtiendo'?tiempoStr:'—'}</td>
+          <td style="font-size:11px;color:${mins>HORAS_LIMITE*60?'var(--red)':'var(--ink3)'}">${p.status==='porsurtir'||p.status==='surtiendo'?tiempoStr:vencSurt?`<span style="color:#ff4500;font-weight:700;">${diasSurt}d</span>`:'—'}</td>
         </tr>`;}).join('')}
       </tbody></table></div>`;
   } else {
     container.innerHTML=`<div class="pedidos-grid">${pedidos.map(p=>{
       const venc=isVencido(p);
+      const vencSurt=isVencidoSurtido(p);
       const ts=parseDate(p.ts_registro);
       const mins=ts?Math.round((Date.now()-ts.getTime())/60000):0;
       const tiempoStr=mins<60?mins+'min':Math.round(mins/60)+'h '+mins%60+'min';
-      return `<div class="pedido-card ${venc?'vencido':p.status}" onclick="abrirPedido('${p.folio}')">
+      const diasSurt2 = vencSurt ? diasDesdeSurtido(p) : 0;
+      const cardClass = venc?'vencido':vencSurt?'vencido_surtido':p.status;
+      const badgeKey  = venc?'vencido':vencSurt?'vencido_surtido':getDisplayStatus(p);
+      const badgeLbl  = venc?'⚠ Vencido':vencSurt?`🔴 ${diasSurt2}d sin enviar`:STATUS_LABELS[getDisplayStatus(p)]||STATUS_LABELS[p.status];
+      return `<div class="pedido-card ${cardClass}" onclick="abrirPedido('${p.folio}')">
         <div style="display:flex;align-items:center;gap:8px;"><span style="font-family:var(--font-mono);font-size:11px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-weight:700;">${p.turno||'#?'}</span><span class="pedido-folio" style="font-size:14px;">${p.folio}</span></div>
         <div class="pedido-cliente">${p.cliente}</div>
         <div class="pedido-meta">
@@ -1383,9 +1461,10 @@ function renderPedidos() {
           ${p.rack?`<span>📍 Rack ${p.rack}</span>`:''}
           <span>🕐 ${p.ts_registro}</span>
           ${(p.status==='porsurtir'||p.status==='surtiendo')?`<span style="color:${mins>HORAS_LIMITE*60?'var(--red)':'var(--ink3)'}">⏱ ${tiempoStr}</span>`:''}
+          ${vencSurt?`<span style="color:#ff4500;font-weight:600;">🔴 Surtido hace ${diasSurt2} días — requiere revisión</span>`:''}
         </div>
         <div class="pedido-footer">
-          <span class="badge badge-${venc?'vencido':getDisplayStatus(p)}">${venc?'⚠ Vencido':STATUS_LABELS[getDisplayStatus(p)]||STATUS_LABELS[p.status]}</span>
+          <span class="badge badge-${badgeKey}">${badgeLbl}</span>
           ${p.notas?`<span style="font-size:11px;color:var(--ink3)">📝</span>`:''}
         </div>
       </div>`;}).join('')}</div>`;
@@ -1403,7 +1482,11 @@ async function abrirPedido(folio) {
   if (!p) return;
   const turnoStr = p.turno ? ` <span style="font-size:16px;background:var(--accent);color:#fff;padding:2px 10px;border-radius:4px;vertical-align:middle;">${p.turno}</span>` : '';
   document.getElementById('modal-title').innerHTML = p.folio + turnoStr;
-  document.getElementById('modal-badge').innerHTML=`<span class="badge badge-${isVencido(p)?'vencido':p.status}">${isVencido(p)?'⚠ Vencido':STATUS_LABELS[p.status]}</span>`;
+  const _vs = isVencidoSurtido(p);
+  const _vb = isVencido(p);
+  const _modalBadgeKey = _vb?'vencido':_vs?'vencido_surtido':p.status;
+  const _modalBadgeLbl = _vb?'⚠ Vencido':_vs?`🔴 Surtido hace ${diasDesdeSurtido(p)} días`:STATUS_LABELS[p.status];
+  document.getElementById('modal-badge').innerHTML=`<span class="badge badge-${_modalBadgeKey}">${_modalBadgeLbl}</span>${_vs?`<span style="font-size:12px;color:#ff4500;margin-left:10px;">Requiere revisión — posible cancelación</span>`:''}`;
 
   const [chatRes, lineasRes] = await Promise.all([
     api('getChat',{folio}),
@@ -1488,6 +1571,8 @@ function buildTimeline(p) {
 function buildActions(p) {
   const rol=SESSION.rol, user=SESSION.username;
   if (p.status==='cancelado'||p.status==='enviado') return '';
+  // Alerta especial si está surtido vencido
+  const _isVS = isVencidoSurtido(p);
   let html='<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:18px;display:flex;flex-wrap:wrap;gap:8px;">';
 
   if ((rol==='surtidor'||rol==='admin') && p.status==='porsurtir') {
@@ -1525,8 +1610,15 @@ function buildActions(p) {
       </div>`;
     } else html+=`<div style="font-size:13px;color:var(--ink3)">Surtiendo: <strong>${p.surtidor}</strong></div>`;
   }
-  if ((rol==='vendedor'||rol==='admin')&&p.status==='surtido')
+  if ((rol==='vendedor'||rol==='admin')&&p.status==='surtido') {
+    if (_isVS) {
+      html+=`<div style="width:100%;padding:12px 14px;background:rgba(255,69,0,.1);border:1.5px solid #ff4500;border-radius:var(--radius);font-size:13px;margin-bottom:8px;">
+        <div style="font-weight:700;color:#ff4500;margin-bottom:4px;">🔴 Pedido surtido vencido — ${diasDesdeSurtido(p)} días sin enviarse</div>
+        <div style="color:var(--ink2);font-size:12px;">Este pedido superó los 15 días surtido. Por favor confirma si la venta se concretó o cancela el pedido.</div>
+      </div>`;
+    }
     html+=`<button class="btn btn-warn" onclick="enviarPedido('${p.folio}')">📦 Marcar como Enviado</button>`;
+  }
   if (rol==='admin')
     html+=`<button class="btn btn-danger" onclick="cancelarPedido('${p.folio}')">✕ Cancelar</button>`;
   html+='</div>';
@@ -1928,6 +2020,163 @@ async function generarReporte() {
         </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--ink3);padding:16px;">Sin datos de surtidores</td></tr>'}
       </tbody>
     </table>`;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  SECCIÓN ENVIADOS — KPIs + Gráficas por hora/día + Top vendedores
+  // ══════════════════════════════════════════════════════════════════════════
+  const enviadosFiltro = pedidos.filter(p => p.ts_enviado && p.ts_enviado.trim() !== '');
+  const kpisEnvEl = document.getElementById('rep-kpis-enviados');
+  const chartEnvHEl = document.getElementById('rep-chart-env-horas');
+  const chartEnvDEl = document.getElementById('rep-chart-env-dias');
+  const envVendEl  = document.getElementById('rep-enviados-vendedor');
+
+  if (!enviadosFiltro.length) {
+    if (kpisEnvEl) kpisEnvEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--ink3);padding:20px;">Sin envíos en el rango seleccionado</div>';
+    if (chartEnvHEl) chartEnvHEl.innerHTML = '';
+    if (chartEnvDEl) chartEnvDEl.innerHTML = '';
+    if (envVendEl)  envVendEl.innerHTML = '';
+  } else {
+    // ── KPIs enviados ──────────────────────────────────────────────────────
+    // Hora pico de envíos
+    const horasEnv = {};
+    for (let h = 10; h <= 19; h++) horasEnv[h] = 0;
+    enviadosFiltro.forEach(p => {
+      const ts = parseDate(p.ts_enviado);
+      if (!ts) return;
+      const h = ts.getHours();
+      if (horasEnv[h] !== undefined) horasEnv[h]++;
+    });
+    const horaMaxEnv = Object.entries(horasEnv).sort((a,b)=>b[1]-a[1])[0];
+
+    // Día pico de envíos
+    const diasEnv = {1:0,2:0,3:0,4:0,5:0,6:0};
+    const diasNames2 = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    enviadosFiltro.forEach(p => {
+      const ts = parseDate(p.ts_enviado);
+      if (!ts) return;
+      const d = ts.getDay();
+      if (diasEnv[d] !== undefined) diasEnv[d]++;
+    });
+    const diaMaxEnv = Object.entries(diasEnv).sort((a,b)=>b[1]-a[1])[0];
+
+    // Tiempo promedio registro→envío
+    const tiemposEnv = enviadosFiltro
+      .filter(p => p.ts_registro && p.ts_enviado)
+      .map(p => minutosHabiles(parseDate(p.ts_registro), parseDate(p.ts_enviado)));
+    const promTotalEnv = tiemposEnv.length
+      ? Math.round(tiemposEnv.reduce((a,b)=>a+b,0) / tiemposEnv.length) : 0;
+
+    // Tasa de envío vs total
+    const tasaEnvio = total > 0 ? Math.round((enviadosFiltro.length / total) * 100) : 0;
+
+    // Enviados de hoy
+    const hoy = new Date().toLocaleDateString('es-MX');
+    const enviadosHoy2 = enviadosFiltro.filter(p => {
+      const ts = parseDate(p.ts_enviado);
+      return ts && ts.toLocaleDateString('es-MX') === hoy;
+    });
+
+    if (kpisEnvEl) kpisEnvEl.innerHTML = [
+      {num: enviadosFiltro.length, lbl: 'Total enviados',      sub: `${tasaEnvio}% del total`,       color:'#7dc242'},
+      {num: enviadosHoy2.length,   lbl: 'Enviados hoy',        sub: new Date().toLocaleDateString('es-MX',{weekday:'long'}), color:'#0ea5d8'},
+      {num: horaMaxEnv[1] ? `${horaMaxEnv[0]}:00` : '—', lbl: 'Hora pico envíos', sub: `${horaMaxEnv[1]} pedidos`, color:'#ff9800', isText:true},
+      {num: diasNames2[diaMaxEnv[0]] || '—', lbl: 'Día más activo',   sub: `${diaMaxEnv[1]} envíos`,  color:'#d500f9', isText:true},
+      {num: fmtMins(promTotalEnv), lbl: 'T. promedio total',   sub: 'registro → envío',              color:'#00bcd4', isText:true},
+    ].map(k => `
+      <div class="rep-kpi" style="--kpi-color:${k.color}">
+        <div class="rep-kpi-num" style="${k.isText?'font-size:26px;':''}color:${k.color}">${k.num}</div>
+        <div class="rep-kpi-lbl">${k.lbl}</div>
+        ${k.sub ? `<div class="rep-kpi-sub">${k.sub}</div>` : ''}
+      </div>`).join('');
+
+    // ── Gráfica enviados por hora ──────────────────────────────────────────
+    const maxHoraEnv = Math.max(...Object.values(horasEnv), 1);
+    if (chartEnvHEl) chartEnvHEl.innerHTML = `
+      <div class="bar-chart-title">📦 Envíos por hora del día</div>
+      <div class="bar-group">
+        ${Object.entries(horasEnv).map(([h, val]) => {
+          const pct = Math.round((val / maxHoraEnv) * 85);
+          const isMax = val === maxHoraEnv && val > 0;
+          return `<div class="bar" style="height:${pct||2}px;background:${isMax?'#7dc242':'#0ea5d8'};" title="${h}:00 — ${val} envíos">
+            ${isMax ? `<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#7dc242;white-space:nowrap;">${val}★</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="bar-labels">
+        ${Object.keys(horasEnv).map(h => `<div class="bar-lbl">${h}</div>`).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Hora del día · 🟢 hora pico</div>`;
+
+    // ── Gráfica enviados por día ───────────────────────────────────────────
+    const maxDiaEnv = Math.max(...Object.values(diasEnv), 1);
+    if (chartEnvDEl) chartEnvDEl.innerHTML = `
+      <div class="bar-chart-title">📅 Envíos por día de semana</div>
+      <div class="bar-group">
+        ${Object.entries(diasEnv).map(([d, val]) => {
+          const pct = Math.round((val / maxDiaEnv) * 85);
+          const isMax = val === maxDiaEnv && val > 0;
+          return `<div class="bar" style="height:${pct||2}px;background:${isMax?'#7dc242':'#0ea5d8'};" title="${diasNames2[d]} — ${val} envíos">
+            ${isMax ? `<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#7dc242;white-space:nowrap;">${val}★</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="bar-labels">
+        ${Object.keys(diasEnv).map(d => `<div class="bar-lbl">${diasNames2[d]}</div>`).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Día de la semana · 🟢 día pico</div>`;
+
+    // ── Top vendedores por envíos ──────────────────────────────────────────
+    const envPorVendedor = {};
+    enviadosFiltro.forEach(p => {
+      if (!p.vendedor) return;
+      if (!envPorVendedor[p.vendedor]) envPorVendedor[p.vendedor] = {enviados:0, tiempos:[]};
+      envPorVendedor[p.vendedor].enviados++;
+      if (p.ts_registro && p.ts_enviado) {
+        const m = minutosHabiles(parseDate(p.ts_registro), parseDate(p.ts_enviado));
+        envPorVendedor[p.vendedor].tiempos.push(m);
+      }
+    });
+    const envVendSorted = Object.entries(envPorVendedor)
+      .map(([v,d]) => ({
+        vendedor: v,
+        enviados: d.enviados,
+        pct: total > 0 ? Math.round(d.enviados / enviadosFiltro.length * 100) : 0,
+        promT: d.tiempos.length ? Math.round(d.tiempos.reduce((a,b)=>a+b,0)/d.tiempos.length) : null
+      }))
+      .sort((a,b) => b.enviados - a.enviados);
+    const maxEnvV = envVendSorted[0]?.enviados || 1;
+
+    if (envVendEl) envVendEl.innerHTML = `
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px;">🏅 Envíos por Vendedor</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;">Quién genera más pedidos que llegan a enviado</div>
+      <table class="rank-table">
+        <thead><tr>
+          <th style="width:40px;">#</th>
+          <th>Vendedor</th>
+          <th>Enviados</th>
+          <th>% del total</th>
+          <th>T. promedio total</th>
+          <th style="min-width:140px;">Participación</th>
+        </tr></thead>
+        <tbody>${envVendSorted.map((v,i) => `
+          <tr>
+            <td class="rank-pos ${posColors[i]||''}">${i+1}</td>
+            <td style="font-weight:600;">${v.vendedor}</td>
+            <td style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:#7dc242;">${v.enviados}</td>
+            <td style="color:var(--ink2);">${v.pct}%</td>
+            <td style="font-family:var(--font-mono);font-size:12px;">${fmtMins(v.promT)}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div class="inline-bar" style="flex:1;">
+                  <div class="inline-bar-fill" style="width:${Math.round(v.enviados/maxEnvV*100)}%;background:linear-gradient(90deg,#0ea5d8,#7dc242);"></div>
+                </div>
+                <span style="font-size:11px;color:var(--ink3);min-width:28px;">${Math.round(v.enviados/maxEnvV*100)}%</span>
+              </div>
+            </td>
+          </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--ink3);padding:16px;">Sin datos</td></tr>'}
+        </tbody>
+      </table>`;
+  }
 }
 
 
@@ -2015,7 +2264,7 @@ function guardarConfigAlerta(){
   HORAS_LIMITE=parseInt(document.getElementById('cfg-horas').value)||2;
   localStorage.setItem('pedidos_horas',HORAS_LIMITE);
   toast(`Alerta configurada: ${HORAS_LIMITE}h`,'success');
-  Object.keys(localStorage).filter(k=>k.startsWith('venc_')).forEach(k=>localStorage.removeItem(k));
+  Object.keys(localStorage).filter(k=>k.startsWith('venc_')||k.startsWith('venc_surt_')).forEach(k=>localStorage.removeItem(k));
 }
 
 function guardarURL(){
