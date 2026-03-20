@@ -603,6 +603,26 @@ body{overflow-x:hidden;}
 
       <!-- Top vendedores por envíos -->
       <div class="card" id="rep-enviados-vendedor"></div>
+
+      <!-- ── SECCIÓN SUCURSALES ── -->
+      <div style="display:flex;align-items:center;gap:10px;margin:28px 0 14px;">
+        <div style="flex:1;height:2px;background:linear-gradient(90deg,var(--brand-blue,#0ea5d8),transparent);"></div>
+        <span style="font-family:var(--font-display);font-size:22px;letter-spacing:2px;color:var(--brand-blue,#0ea5d8);white-space:nowrap;">🏪 ESTADÍSTICAS DE SUCURSALES</span>
+        <div style="flex:1;height:2px;background:linear-gradient(270deg,var(--brand-blue,#0ea5d8),transparent);"></div>
+      </div>
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:16px;" id="rep-suc-clientes-label"></div>
+
+      <!-- KPIs sucursales -->
+      <div id="rep-kpis-suc" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+      <!-- Gráficas sucursales -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div class="card" id="rep-chart-suc-horas" style="padding:18px;"></div>
+        <div class="card" id="rep-chart-suc-dias" style="padding:18px;"></div>
+      </div>
+
+      <!-- Detalle por sucursal -->
+      <div class="card" id="rep-suc-detalle"></div>
     </div>
 
     <!-- PANEL: ADMIN -->
@@ -639,6 +659,30 @@ body{overflow-x:hidden;}
           <button class="btn btn-primary" onclick="guardarUrgPass()">Guardar</button>
         </div>
         <p style="font-size:12px;color:var(--ink3);margin-top:8px;">Solo quien tenga esta clave podrá adelantar un pedido en la cola de surtido.</p>
+      </div>
+
+      <!-- Clientes Sucursal -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-weight:600;font-size:15px;margin-bottom:6px;">🏪 Clientes Sucursal</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;">
+          Pedidos de estos clientes se <strong>auto-envían</strong> al surtirse y se excluyen de las estadísticas generales de ventas.
+          Tienen su propio panel de estadísticas en la sección de Reportes.
+        </div>
+        <!-- Lista actual -->
+        <div id="suc-lista" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;min-height:32px;"></div>
+        <!-- Agregar nuevo -->
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-field">
+            <label>Nombre exacto del cliente</label>
+            <input type="text" id="suc-nuevo" placeholder="ej. FALTANTE 3ER PISO" style="width:260px;"
+              oninput="this.value=this.value.toUpperCase()"
+              onkeydown="if(event.key==='Enter')agregarSucursal()">
+          </div>
+          <button class="btn btn-primary" onclick="agregarSucursal()">+ Agregar</button>
+        </div>
+        <p style="font-size:12px;color:var(--ink3);margin-top:10px;">
+          ⚠️ El nombre debe coincidir exactamente con el campo Cliente en los pedidos (mayúsculas incluidas).
+        </p>
       </div>
 
       <!-- Alerta tiempo límite -->
@@ -795,6 +839,16 @@ let DARK_MODE = localStorage.getItem('pedidos_dark') === '1';
 let NOTIFS = JSON.parse(localStorage.getItem('pedidos_notifs') || '[]');
 let HORAS_LIMITE = parseInt(localStorage.getItem('pedidos_horas') || '2');
 const DIAS_SURTIDO_LIMITE = 15; // Pedidos surtidos con 15+ días → vencidos por cobrar
+
+// ── CLIENTES SUCURSAL ─────────────────────────────────────────────────────────
+// Pedidos de estos clientes: se auto-envían al surtirse y se excluyen de
+// las estadísticas generales de ventas. Tienen su propio panel de estadísticas.
+// Para agregar uno nuevo: panel Admin → Clientes Sucursal → agregar nombre exacto.
+let CLIENTES_SUCURSAL = JSON.parse(localStorage.getItem('pedidos_sucursales') || '["FALTANTE 30,31","FALTANTE 2DO"]');
+
+function esSucursal(p) {
+  return CLIENTES_SUCURSAL.some(c => c.trim().toUpperCase() === (p.cliente||'').trim().toUpperCase());
+}
 let CLIENT_CACHE = [];
 let DATE_DESDE = '';
 let DATE_HASTA = '';
@@ -1055,7 +1109,7 @@ function switchPanel(name) {
     if (clearBtn) clearBtn.style.display='none';
     (async()=>{ await cargarPedidos(); renderAlmacen(); })();
   }
-  if (name==='admin') { document.getElementById('sheets-url').value=SHEETS_URL; cargarUsuariosAdmin(); }
+  if (name==='admin') { document.getElementById('sheets-url').value=SHEETS_URL; cargarUsuariosAdmin(); renderSucursalesList(); }
 }
 
 // ─── AUTO REFRESH — SISTEMA COMPLETO ─────────────────────────────────────────
@@ -1644,12 +1698,27 @@ async function tomarPedido(folio) {
 async function surtirPedido(folio) {
   const rack=document.getElementById('rack-val').value;
   if (!rack){toast('Selecciona un rack','error');return;}
-  if (!confirm(`¿Confirmar surtido en Rack ${rack}?`)) return;
+  const p = ALL_PEDIDOS.find(x=>x.folio===folio);
+  const esSuc = p && esSucursal(p);
+  const confirmMsg = esSuc
+    ? `¿Confirmar surtido en Rack ${rack}?\nPedido de SUCURSAL — se marcará como ENVIADO automáticamente.`
+    : `¿Confirmar surtido en Rack ${rack}?`;
+  if (!confirm(confirmMsg)) return;
   showLoading('Guardando...');
   const res=await api('surtirPedido',{folio,rack,surtidor:SESSION.username});
   hideLoading();
-  if (res.ok){toast(`Surtido en Rack ${rack}`,'success');closeModal();await cargarPedidos();}
-  else toast(res.error,'error');
+  if (res.ok) {
+    if (esSuc) {
+      // Auto-envío inmediato para pedidos de sucursal
+      showLoading('Enviando automáticamente...');
+      await api('enviarPedido',{folio});
+      hideLoading();
+      toast(`✅ Surtido y enviado automáticamente — Rack ${rack}`,'success');
+    } else {
+      toast(`Surtido en Rack ${rack}`,'success');
+    }
+    closeModal(); await cargarPedidos();
+  } else toast(res.error,'error');
 }
 async function enviarPedido(folio) {
   if (!confirm(`¿Marcar ${folio} como ENVIADO?`)) return;
@@ -1801,7 +1870,7 @@ async function generarReporte() {
   else if (hastaDate) rangoLabel = `Hasta ${fmtLabel(hastaDate)}`;
   document.getElementById('rep-rango-label').textContent = '📅 ' + rangoLabel;
 
-  let pedidos = resPed.pedidos || [];
+  let pedidosTodos = resPed.pedidos || [];
 
   // Filtrar por rango
   const enRango = p => {
@@ -1811,7 +1880,11 @@ async function generarReporte() {
     if (hastaDate && ts > hastaDate) return false;
     return true;
   };
-  pedidos = pedidos.filter(enRango);
+  pedidosTodos = pedidosTodos.filter(enRango);
+
+  // Separar pedidos normales (excluye sucursales) y pedidos de sucursal
+  const pedidosSucursal = pedidosTodos.filter(p => esSucursal(p));
+  let pedidos = pedidosTodos.filter(p => !esSucursal(p));
 
   if (!pedidos.length) {
     document.getElementById('rep-kpis').innerHTML = '<div style="color:var(--ink3);padding:20px;grid-column:1/-1;text-align:center;">Sin datos en el rango seleccionado</div>';
@@ -2177,6 +2250,135 @@ async function generarReporte() {
         </tbody>
       </table>`;
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  SECCIÓN SUCURSALES
+  // ══════════════════════════════════════════════════════════════════════════
+  const sucLabel = document.getElementById('rep-suc-clientes-label');
+  const kpisSucEl = document.getElementById('rep-kpis-suc');
+  const chartSucH = document.getElementById('rep-chart-suc-horas');
+  const chartSucD = document.getElementById('rep-chart-suc-dias');
+  const detalleSuc = document.getElementById('rep-suc-detalle');
+
+  if (sucLabel) sucLabel.textContent = 'Clientes configurados como sucursal: ' + CLIENTES_SUCURSAL.join(' · ');
+
+  if (!pedidosSucursal.length) {
+    if (kpisSucEl) kpisSucEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--ink3);padding:20px;">Sin pedidos de sucursal en el rango seleccionado</div>';
+    [chartSucH, chartSucD, detalleSuc].forEach(el => { if(el) el.innerHTML = ''; });
+  } else {
+    // ── KPIs sucursales ──────────────────────────────────────────────────────
+    const sucEnviados = pedidosSucursal.filter(p => p.ts_enviado && p.ts_enviado.trim() !== '');
+    const sucPendientes = pedidosSucursal.filter(p => p.status === 'porsurtir' || p.status === 'surtiendo');
+
+    // Tiempo promedio registro→surtido (lo importante en sucursales)
+    const tSuc = pedidosSucursal
+      .filter(p => p.ts_registro && p.ts_surtido)
+      .map(p => minutosHabiles(parseDate(p.ts_registro), parseDate(p.ts_surtido)));
+    const promTSuc = tSuc.length ? Math.round(tSuc.reduce((a,b)=>a+b,0)/tSuc.length) : 0;
+
+    // Hora y día pico de surtido de sucursales
+    const horasSuc = {}; for (let h=10;h<=19;h++) horasSuc[h]=0;
+    const diasSucMap = {1:0,2:0,3:0,4:0,5:0,6:0};
+    const diasNS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    pedidosSucursal.forEach(p => {
+      const ts = parseDate(p.ts_surtido || p.ts_registro);
+      if (!ts) return;
+      const h = ts.getHours(); if (horasSuc[h] !== undefined) horasSuc[h]++;
+      const d = ts.getDay(); if (diasSucMap[d] !== undefined) diasSucMap[d]++;
+    });
+    const horaPicoSuc = Object.entries(horasSuc).sort((a,b)=>b[1]-a[1])[0];
+    const diaPicoSuc  = Object.entries(diasSucMap).sort((a,b)=>b[1]-a[1])[0];
+
+    if (kpisSucEl) kpisSucEl.innerHTML = [
+      {num: pedidosSucursal.length, lbl: 'Total pedidos sucursal', sub: 'en el rango',           color:'#0ea5d8'},
+      {num: sucEnviados.length,     lbl: 'Completados',            sub: pedidosSucursal.length > 0 ? Math.round(sucEnviados.length/pedidosSucursal.length*100)+'% completados' : '', color:'#7dc242'},
+      {num: sucPendientes.length,   lbl: 'Pendientes ahora',       sub: '',                       color:'#ff9800'},
+      {num: horaPicoSuc[1] ? horaPicoSuc[0]+':00' : '—', lbl: 'Hora pico surtido', sub: horaPicoSuc[1]+' pedidos', color:'#d500f9', isText:true},
+      {num: diasNS[diaPicoSuc[0]]||'—', lbl: 'Día más activo',    sub: diaPicoSuc[1]+' pedidos', color:'#ff6d00', isText:true},
+      {num: fmtMins(promTSuc),      lbl: 'T. promedio surtido',    sub: 'hora hábil',             color:'#00bcd4', isText:true},
+    ].map(k=>`
+      <div class="rep-kpi" style="--kpi-color:${k.color}">
+        <div class="rep-kpi-num" style="${k.isText?'font-size:26px;':''}color:${k.color}">${k.num}</div>
+        <div class="rep-kpi-lbl">${k.lbl}</div>
+        ${k.sub?`<div class="rep-kpi-sub">${k.sub}</div>`:''}
+      </div>`).join('');
+
+    // ── Gráfica por hora ─────────────────────────────────────────────────────
+    const maxHS = Math.max(...Object.values(horasSuc), 1);
+    if (chartSucH) chartSucH.innerHTML = `
+      <div class="bar-chart-title">🏪 Sucursales — pedidos por hora</div>
+      <div class="bar-group">
+        ${Object.entries(horasSuc).map(([h,val])=>{
+          const pct=Math.round((val/maxHS)*85);
+          const isMax=val===maxHS&&val>0;
+          return `<div class="bar" style="height:${pct||2}px;background:${isMax?'#0ea5d8':'rgba(14,165,216,.4)};" title="${h}:00 — ${val} pedidos">
+            ${isMax?`<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#0ea5d8;white-space:nowrap;">${val}★</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="bar-labels">${Object.keys(horasSuc).map(h=>`<div class="bar-lbl">${h}</div>`).join('')}</div>
+      <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Hora del día · 🔵 hora pico</div>`;
+
+    // ── Gráfica por día ──────────────────────────────────────────────────────
+    const maxDS = Math.max(...Object.values(diasSucMap), 1);
+    if (chartSucD) chartSucD.innerHTML = `
+      <div class="bar-chart-title">🏪 Sucursales — pedidos por día</div>
+      <div class="bar-group">
+        ${Object.entries(diasSucMap).map(([d,val])=>{
+          const pct=Math.round((val/maxDS)*85);
+          const isMax=val===maxDS&&val>0;
+          return `<div class="bar" style="height:${pct||2}px;background:${isMax?'#0ea5d8':'rgba(14,165,216,.4)};" title="${diasNS[d]} — ${val} pedidos">
+            ${isMax?`<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#0ea5d8;white-space:nowrap;">${val}★</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="bar-labels">${Object.keys(diasSucMap).map(d=>`<div class="bar-lbl">${diasNS[d]}</div>`).join('')}</div>
+      <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Día de la semana · 🔵 día pico</div>`;
+
+    // ── Detalle por sucursal ─────────────────────────────────────────────────
+    const porSuc = {};
+    pedidosSucursal.forEach(p => {
+      const k = p.cliente.trim().toUpperCase();
+      if (!porSuc[k]) porSuc[k] = {total:0, enviados:0, tiempos:[]};
+      porSuc[k].total++;
+      if (p.ts_enviado && p.ts_enviado.trim()!=='') porSuc[k].enviados++;
+      if (p.ts_registro && p.ts_surtido) {
+        const m = minutosHabiles(parseDate(p.ts_registro), parseDate(p.ts_surtido));
+        porSuc[k].tiempos.push(m);
+      }
+    });
+    const sucSorted = Object.entries(porSuc)
+      .map(([nombre,d])=>({nombre, ...d, prom: d.tiempos.length ? Math.round(d.tiempos.reduce((a,b)=>a+b,0)/d.tiempos.length) : null}))
+      .sort((a,b)=>b.total-a.total);
+    const maxSucT = sucSorted[0]?.total || 1;
+
+    if (detalleSuc) detalleSuc.innerHTML = `
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px;">🏪 Detalle por sucursal</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;">Rendimiento individual de cada sucursal en el rango</div>
+      <table class="rank-table">
+        <thead><tr>
+          <th>Sucursal</th><th>Pedidos</th><th>Completados</th>
+          <th>% Éxito</th><th>T. surtido prom.</th><th style="min-width:140px;">Volumen</th>
+        </tr></thead>
+        <tbody>${sucSorted.map(s=>`
+          <tr>
+            <td style="font-weight:600;">${s.nombre}</td>
+            <td style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:#0ea5d8;">${s.total}</td>
+            <td style="color:var(--green);">${s.enviados}</td>
+            <td>${s.total>0?Math.round(s.enviados/s.total*100):0}%</td>
+            <td style="font-family:var(--font-mono);font-size:12px;">${fmtMins(s.prom)}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div class="inline-bar" style="flex:1;">
+                  <div class="inline-bar-fill" style="width:${Math.round(s.total/maxSucT*100)}%;background:linear-gradient(90deg,#0ea5d8,#7dc242);"></div>
+                </div>
+                <span style="font-size:11px;color:var(--ink3);">${Math.round(s.total/maxSucT*100)}%</span>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
 }
 
 
@@ -2265,6 +2467,43 @@ function guardarConfigAlerta(){
   localStorage.setItem('pedidos_horas',HORAS_LIMITE);
   toast(`Alerta configurada: ${HORAS_LIMITE}h`,'success');
   Object.keys(localStorage).filter(k=>k.startsWith('venc_')||k.startsWith('venc_surt_')).forEach(k=>localStorage.removeItem(k));
+}
+
+function renderSucursalesList() {
+  const el = document.getElementById('suc-lista');
+  if (!el) return;
+  if (!CLIENTES_SUCURSAL.length) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--ink3);">Sin clientes configurados</span>';
+    return;
+  }
+  el.innerHTML = CLIENTES_SUCURSAL.map((c,i) => `
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(14,165,216,.12);border:1.5px solid rgba(14,165,216,.3);border-radius:20px;font-size:12px;font-weight:600;color:var(--brand-blue,#0ea5d8);">
+      🏪 ${c}
+      <button onclick="eliminarSucursal(${i})" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--ink3);line-height:1;padding:0 2px;" title="Eliminar">✕</button>
+    </div>`).join('');
+}
+
+function agregarSucursal() {
+  const inp = document.getElementById('suc-nuevo');
+  const nombre = inp.value.trim().toUpperCase();
+  if (!nombre) { toast('Escribe el nombre del cliente','error'); return; }
+  if (CLIENTES_SUCURSAL.some(c => c.toUpperCase() === nombre)) {
+    toast('Este cliente ya está en la lista','error'); return;
+  }
+  CLIENTES_SUCURSAL.push(nombre);
+  localStorage.setItem('pedidos_sucursales', JSON.stringify(CLIENTES_SUCURSAL));
+  inp.value = '';
+  renderSucursalesList();
+  toast('Sucursal "' + nombre + '" agregada','success');
+}
+
+function eliminarSucursal(idx) {
+  const nombre = CLIENTES_SUCURSAL[idx];
+  if (!confirm('¿Eliminar "' + nombre + '" de la lista de sucursales?')) return;
+  CLIENTES_SUCURSAL.splice(idx, 1);
+  localStorage.setItem('pedidos_sucursales', JSON.stringify(CLIENTES_SUCURSAL));
+  renderSucursalesList();
+  toast('Sucursal eliminada','info');
 }
 
 function guardarURL(){
@@ -2834,9 +3073,19 @@ async function almConfirmarSurtido(folio, surtidor, overlay) {
   overlay.remove();
   showLoading('Guardando...');
   const res = await api('surtirPedido', {folio, rack, surtidor});
-  hideLoading();
-  if (res.ok) { toast('Pedido surtido en Rack ' + rack, 'success'); await cargarPedidos(); renderAlmacen(); }
-  else toast(res.error, 'error');
+  if (res.ok) {
+    const p = ALL_PEDIDOS.find(x => x.folio === folio);
+    if (p && esSucursal(p)) {
+      // Auto-envío para pedidos de sucursal
+      await api('enviarPedido', {folio});
+      hideLoading();
+      toast('✅ ' + folio + ' surtido y enviado automáticamente — Rack ' + rack, 'success');
+    } else {
+      hideLoading();
+      toast('Pedido surtido en Rack ' + rack, 'success');
+    }
+    await cargarPedidos(); renderAlmacen();
+  } else { hideLoading(); toast(res.error, 'error'); }
 }
 
 let _almCallback = null;
