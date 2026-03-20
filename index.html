@@ -2310,8 +2310,8 @@ async function generarReporte() {
         const pct = Math.round((val/maxHS)*85);
         const isMax = val===maxHS && val>0;
         const bg = isMax ? '#0ea5d8' : 'rgba(14,165,216,.4)';
-        const star = isMax ? '<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#0ea5d8;white-space:nowrap;">'+val+'&#9733;</div>' : '';
-        return '<div class="bar" style="height:'+(pct||2)+'px;background:'+bg+';" title="'+h+':00">'+star+'</div>';
+        const star = isMax ? '<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#0ea5d8;white-space:nowrap;">'+val+' ped.</div>' : '';
+        return '<div class="bar" style="height:'+(pct||2)+'px;background:'+bg+';overflow:visible;" title="'+h+':00 — '+val+' pedidos">'+star+'</div>';
       }).join('');
       const labelsH = Object.keys(horasSuc).map(h => '<div class="bar-lbl">'+h+'</div>').join('');
       chartSucH.innerHTML = '<div class="bar-chart-title">&#127978; Sucursales &mdash; pedidos por hora</div><div class="bar-group">'+barsH+'</div><div class="bar-labels">'+labelsH+'</div><div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Hora del d&iacute;a &middot; hora pico en azul</div>';
@@ -2324,8 +2324,8 @@ async function generarReporte() {
         const pct = Math.round((val/maxDS)*85);
         const isMax = val===maxDS && val>0;
         const bg2 = isMax ? '#0ea5d8' : 'rgba(14,165,216,.4)';
-        const star2 = isMax ? '<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#0ea5d8;white-space:nowrap;">'+val+'&#9733;</div>' : '';
-        return '<div class="bar" style="height:'+(pct||2)+'px;background:'+bg2+';" title="'+diasNS[d]+'">'+star2+'</div>';
+        const star2 = isMax ? '<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#0ea5d8;white-space:nowrap;">'+val+' ped.</div>' : '';
+        return '<div class="bar" style="height:'+(pct||2)+'px;background:'+bg2+';overflow:visible;" title="'+diasNS[d]+' — '+val+' pedidos">'+star2+'</div>';
       }).join('');
       const labelsD = Object.keys(diasSucMap).map(d => '<div class="bar-lbl">'+diasNS[d]+'</div>').join('');
       chartSucD.innerHTML = '<div class="bar-chart-title">&#127978; Sucursales &mdash; pedidos por d&iacute;a</div><div class="bar-group">'+barsD+'</div><div class="bar-labels">'+labelsD+'</div><div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">D&iacute;a de la semana &middot; pico en azul</div>';
