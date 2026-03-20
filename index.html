@@ -1948,14 +1948,16 @@ async function generarReporte() {
       ${horasLabels.map(h => {
         const val = byHora[h];
         const pct = Math.round((val / maxHora) * 85);
-        const color = val === maxHora ? '#e8001a' : '#4a9eff';
-        return `<div class="bar" style="height:${pct||2}px;background:${color};" data-val="${val}" title="${h}:00 — ${val} pedidos"></div>`;
+        const isMax = val === maxHora && val > 0;
+        const color = isMax ? '#e8001a' : '#4a9eff';
+        const lbl = isMax ? `<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#e8001a;white-space:nowrap;">${val} ped.</div>` : '';
+        return `<div class="bar" style="height:${pct||2}px;background:${color};overflow:visible;" data-val="${val}" title="${h}:00 — ${val} pedidos">${lbl}</div>`;
       }).join('')}
     </div>
     <div class="bar-labels">
       ${horasLabels.map(h => `<div class="bar-lbl">${h}</div>`).join('')}
     </div>
-    <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Hora del día</div>`;
+    <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Hora del día · 🔴 hora pico</div>`;
 
   // ── GRÁFICA POR DÍA DE SEMANA ────────────────────────────────────────────────
   const diasNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -1972,14 +1974,16 @@ async function generarReporte() {
     <div class="bar-group">
       ${Object.entries(byDia).map(([d, val]) => {
         const pct = Math.round((val / maxDia) * 85);
-        const color = val === maxDia ? '#00c853' : '#4a9eff';
-        return `<div class="bar" style="height:${pct||2}px;background:${color};" data-val="${val}" title="${diasNames[d]} — ${val} pedidos"></div>`;
+        const isMax = val === maxDia && val > 0;
+        const color = isMax ? '#00c853' : '#4a9eff';
+        const lbl = isMax ? `<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#00c853;white-space:nowrap;">${val} ped.</div>` : '';
+        return `<div class="bar" style="height:${pct||2}px;background:${color};overflow:visible;" data-val="${val}" title="${diasNames[d]} — ${val} pedidos">${lbl}</div>`;
       }).join('')}
     </div>
     <div class="bar-labels">
       ${Object.keys(byDia).map(d => `<div class="bar-lbl">${diasNames[d]}</div>`).join('')}
     </div>
-    <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Día de la semana</div>`;
+    <div style="font-size:10px;color:var(--ink3);margin-top:6px;text-align:center;">Día de la semana · 🟢 día pico</div>`;
 
   // ── RANKING VENDEDORES ───────────────────────────────────────────────────────
   const porVendedor = {};
