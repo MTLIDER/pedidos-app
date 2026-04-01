@@ -1805,26 +1805,69 @@ async function consultarPedido() {
 // Horario hábil: Lun-Vie 10:00-19:30 / Sáb 10:00-14:00 / Dom cerrado
 function esHorarioHabil(fecha) {
   if (!fecha) return false;
-  const dow = fecha.getDay(); // 0=Dom, 6=Sáb
-  const h = fecha.getHours(), m = fecha.getMinutes();
-  const mins = h * 60 + m;
-  if (dow === 0) return false; // Domingo cerrado
-  if (dow >= 1 && dow <= 5) return mins >= 600 && mins <= 1170; // 10:00-19:30
-  if (dow === 6) return mins >= 600 && mins <= 840; // 10:00-14:00
+  const dow = fecha.getDay();
+  const mins = fecha.getHours() * 60 + fecha.getMinutes();
+  if (dow === 0) return false;
+  if (dow >= 1 && dow <= 5) return mins >= 600 && mins <= 1170;
+  if (dow === 6) return mins >= 600 && mins <= 840;
   return false;
 }
 
-// Minutos hábiles entre dos fechas
+// Minutos hábiles por día de la semana (Lun-Vie=570, Sáb=240, Dom=0)
+function _minsHabilesEnDia(dow) {
+  if (dow === 0) return 0;
+  if (dow >= 1 && dow <= 5) return 570; // 10:00-19:30
+  if (dow === 6) return 240; // 10:00-14:00
+  return 0;
+}
+
+// Minutos hábiles desde inicio del día hasta 'mins' para un día dado
+function _minsHabilesHasta(dow, mins) {
+  if (dow === 0) return 0;
+  const inicio = 600;
+  const fin = dow === 6 ? 840 : 1170;
+  if (mins <= inicio) return 0;
+  return Math.min(mins, fin) - inicio;
+}
+
+// Minutos hábiles entre dos fechas — cálculo O(días) en lugar de O(minutos)
 function minutosHabiles(desde, hasta) {
   if (!desde || !hasta || hasta <= desde) return 0;
-  let mins = 0;
-  const cur = new Date(desde);
-  // Avanzar minuto a minuto — eficiente para rangos típicos de almacén (<24h)
-  while (cur < hasta) {
-    if (esHorarioHabil(cur)) mins++;
-    cur.setMinutes(cur.getMinutes() + 1);
+  
+  // Si están en el mismo día
+  const desdeDia = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  const hastaDia = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+  
+  if (desdeDia.getTime() === hastaDia.getTime()) {
+    const dow = desde.getDay();
+    const m1 = desde.getHours() * 60 + desde.getMinutes();
+    const m2 = hasta.getHours() * 60 + hasta.getMinutes();
+    if (dow === 0) return 0;
+    const inicio = 600, fin = dow === 6 ? 840 : 1170;
+    const a = Math.max(m1, inicio), b = Math.min(m2, fin);
+    return Math.max(0, b - a);
   }
-  return mins;
+  
+  // Primer día: desde la hora de inicio hasta fin del día hábil
+  let total = 0;
+  const dow0 = desde.getDay();
+  const m0 = desde.getHours() * 60 + desde.getMinutes();
+  total += _minsHabilesHasta(dow0, dow0 === 6 ? 840 : 1170) - _minsHabilesHasta(dow0, m0);
+  
+  // Días intermedios completos
+  const cur = new Date(desdeDia);
+  cur.setDate(cur.getDate() + 1);
+  while (cur < hastaDia) {
+    total += _minsHabilesEnDia(cur.getDay());
+    cur.setDate(cur.getDate() + 1);
+  }
+  
+  // Último día: desde inicio hasta la hora de fin
+  const dowN = hasta.getDay();
+  const mN = hasta.getHours() * 60 + hasta.getMinutes();
+  total += _minsHabilesHasta(dowN, mN);
+  
+  return Math.max(0, total);
 }
 
 function fmtMins(m) {
