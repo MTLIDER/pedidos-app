@@ -826,8 +826,45 @@ body{overflow-x:hidden;}
 <div class="toast-container" id="toast-container"></div>
 
 <script>
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
-let SHEETS_URL = localStorage.getItem('pedidos_sheets_url') || 'https://script.google.com/macros/s/AKfycby23cg_O5X4Q7fm3kaREWCEl6depK4yMtayTw2TDWBnI5hMu8A0Z3tZVKvop9FJTINC/exec';
+// ─── CONFIG SUPABASE ─────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://catdezjkkflehfoysxvi.supabase.co';
+const SUPABASE_KEY = 'sb_secret_8wrCZgwEMtPqyPKZyaRt4Q__Z_2sJuW';
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_KEY,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation'
+};
+
+// Helper Supabase REST
+async function sbGet(table, params='') {
+  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {headers: SB_HEADERS});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbPost(table, body) {
+  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table, {method:'POST', headers: SB_HEADERS, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbPatch(table, params, body) {
+  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {method:'PATCH', headers: {...SB_HEADERS, 'Prefer':'return=representation'}, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbRpc(fn, body={}) {
+  const r = await fetch(SUPABASE_URL+'/rest/v1/rpc/'+fn, {method:'POST', headers: SB_HEADERS, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// Fecha/hora local México
+function nowMX() {
+  return new Date().toLocaleString('es-MX', {
+    day:'2-digit', month:'2-digit', year:'numeric',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+  }).replace(',','');
+}
 let SESSION = null;
 let ALL_PEDIDOS = [];
 let ALL_LINEAS = [];
@@ -870,153 +907,171 @@ function toggleDark() {
 }
 if (DARK_MODE) document.getElementById('dark-btn') && (document.getElementById('dark-btn').textContent = '☀️');
 
-// ─── API ──────────────────────────────────────────────────────────────────────
+// ─── API SUPABASE ────────────────────────────────────────────────────────────
 async function api(action, data = {}) {
-  if (!SHEETS_URL) return apiDemo(action, data);
   try {
-    const params = new URLSearchParams({action, ...data});
-    const res = await fetch(SHEETS_URL + '?' + params);
-    return await res.json();
+    // ── LOGIN ──────────────────────────────────────────────────────────────
+    if (action === 'login') {
+      const rows = await sbGet('usuarios', `usuario=eq.${encodeURIComponent(data.usuario)}&activo=eq.SI&select=*`);
+      if (!rows.length) return {ok:false, error:'Usuario o contraseña incorrectos'};
+      const u = rows[0];
+      if (u.password !== data.password) return {ok:false, error:'Usuario o contraseña incorrectos'};
+      return {ok:true, usuario:u.usuario, nombre:u.nombre, rol:u.rol};
+    }
+
+    // ── USUARIOS ───────────────────────────────────────────────────────────
+    if (action === 'getUsuarios') {
+      const rows = await sbGet('usuarios', 'select=usuario,nombre,rol,activo&order=nombre');
+      return {ok:true, usuarios:rows};
+    }
+    if (action === 'addUsuario') {
+      const exists = await sbGet('usuarios', `usuario=eq.${encodeURIComponent(data.usuario)}`);
+      if (exists.length) return {ok:false, error:'Usuario ya existe'};
+      await sbPost('usuarios', {usuario:data.usuario, password:data.password, nombre:data.nombre, rol:data.rol, activo:'SI'});
+      return {ok:true};
+    }
+    if (action === 'toggleUsuario') {
+      const rows = await sbGet('usuarios', `usuario=eq.${encodeURIComponent(data.usuario)}&select=activo`);
+      if (!rows.length) return {ok:false, error:'No encontrado'};
+      const nuevoActivo = rows[0].activo === 'NO' ? 'SI' : 'NO';
+      await sbPatch('usuarios', `usuario=eq.${encodeURIComponent(data.usuario)}`, {activo:nuevoActivo});
+      return {ok:true, activo:nuevoActivo};
+    }
+    if (action === 'cambiarPassword') {
+      const rows = await sbGet('usuarios', `usuario=eq.${encodeURIComponent(data.usuario)}&select=password`);
+      if (!rows.length) return {ok:false, error:'No encontrado'};
+      if (data.actual && rows[0].password !== data.actual) return {ok:false, error:'Contraseña actual incorrecta'};
+      await sbPatch('usuarios', `usuario=eq.${encodeURIComponent(data.usuario)}`, {password:data.nueva});
+      return {ok:true};
+    }
+
+    // ── PEDIDOS ────────────────────────────────────────────────────────────
+    if (action === 'getPedidos') {
+      const rows = await sbGet('pedidos', 'select=*&order=consecutivo.asc&limit=2000');
+      return {ok:true, pedidos:rows};
+    }
+    if (action === 'getClientes') {
+      const rows = await sbGet('pedidos', 'select=cliente&order=cliente');
+      const clientes = [...new Set(rows.map(r=>r.cliente).filter(Boolean))];
+      return {ok:true, clientes};
+    }
+    if (action === 'getNextFolio') {
+      const rows = await sbGet('pedidos', 'select=consecutivo&order=consecutivo.desc&limit=1');
+      const next = rows.length ? rows[0].consecutivo + 1 : 1;
+      return {ok:true, folio:'#'+String(next).padStart(4,'0')};
+    }
+    if (action === 'newPedido') {
+      const exists = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=folio`);
+      if (exists.length) return {ok:false, error:'El folio '+data.folio+' ya existe'};
+      const rows = await sbGet('pedidos', 'select=consecutivo&order=consecutivo.desc&limit=1');
+      const consecutivo = rows.length ? rows[0].consecutivo + 1 : 1;
+      const turno = '#'+String(consecutivo).padStart(4,'0');
+      await sbPost('pedidos', {
+        folio:data.folio, consecutivo, turno, cliente:data.cliente,
+        notas:data.notas||'', vendedor:data.vendedor, status:'porsurtir',
+        urgente:false, ts_registro:nowMX(), ts_surtiendo:'', ts_surtido:'',
+        ts_enviado:'', ts_cancelado:'', surtidor:'', rack:'', cancelado_por:''
+      });
+      return {ok:true, folio:data.folio, consecutivo, turno};
+    }
+    if (action === 'marcarUrgente') {
+      const PASS = localStorage.getItem('urgencia_pass') || '010203';
+      if (data.pass !== PASS) return {ok:false, error:'Contraseña de urgencia incorrecta'};
+      await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {urgente:true, consecutivo:-1});
+      return {ok:true};
+    }
+    if (action === 'tomarPedido') {
+      const rows = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=status`);
+      if (!rows.length) return {ok:false, error:'Folio no encontrado'};
+      if (rows[0].status !== 'porsurtir') return {ok:false, error:'El pedido ya fue tomado'};
+      const res = await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'surtiendo', surtidor:data.surtidor, ts_surtiendo:nowMX()});
+      return {ok:true, pedido:res[0]};
+    }
+    if (action === 'surtirPedido') {
+      const rows = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=status,surtidor`);
+      if (!rows.length) return {ok:false, error:'Folio no encontrado'};
+      if (rows[0].status !== 'surtiendo') return {ok:false, error:'El pedido no está en surtiendo'};
+      if (rows[0].surtidor !== data.surtidor) return {ok:false, error:'Este pedido lo está surtiendo: '+rows[0].surtidor};
+      const res = await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'surtido', rack:data.rack, ts_surtido:nowMX()});
+      return {ok:true, pedido:res[0]};
+    }
+    if (action === 'enviarPedido') {
+      const rows = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=status`);
+      if (!rows.length) return {ok:false, error:'Folio no encontrado'};
+      if (rows[0].status !== 'surtido') return {ok:false, error:'El pedido aún no está surtido'};
+      const res = await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'enviado', ts_enviado:nowMX()});
+      return {ok:true, pedido:res[0]};
+    }
+    if (action === 'cancelarPedido') {
+      const res = await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'cancelado', cancelado_por:data.cancelado_por, ts_cancelado:nowMX()});
+      return {ok:true};
+    }
+
+    // ── LÍNEAS ─────────────────────────────────────────────────────────────
+    if (action === 'getAllLineas') {
+      const rows = await sbGet('lineas', 'select=*&order=consecutivo.asc&limit=2000');
+      return {ok:true, lineas:rows};
+    }
+    if (action === 'getLineas') {
+      const rows = await sbGet('lineas', `folio=eq.${encodeURIComponent(data.folio)}&select=*&order=consecutivo.asc`);
+      return {ok:true, lineas:rows};
+    }
+    if (action === 'addLinea') {
+      const pedRows = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=vendedor,status`);
+      if (!pedRows.length) return {ok:false, error:'Folio no encontrado'};
+      const p = pedRows[0];
+      if (p.vendedor !== data.vendedor) return {ok:false, error:'Solo el vendedor que creó el folio puede agregar mercancía'};
+      if (p.status === 'cancelado') return {ok:false, error:'El pedido está cancelado'};
+      if (p.status === 'enviado') return {ok:false, error:'El pedido ya fue enviado'};
+      const pedCount = await sbGet('pedidos', 'select=consecutivo&order=consecutivo.desc&limit=1');
+      const linCount = await sbGet('lineas', 'select=consecutivo&order=consecutivo.desc&limit=1');
+      const maxPed = pedCount.length ? pedCount[0].consecutivo : 0;
+      const maxLin = linCount.length ? linCount[0].consecutivo : 0;
+      const consecutivo = Math.max(maxPed, maxLin) + 1;
+      const turno = '#L'+String(consecutivo).padStart(4,'0');
+      const id = 'LIN-'+Date.now();
+      await sbPost('lineas', {id, folio:data.folio, nota:data.nota, vendedor:data.vendedor, status:'porsurtir', ts_registro:nowMX(), ts_surtiendo:'', ts_surtido:'', surtidor:'', rack:'', consecutivo, turno});
+      if (p.status === 'surtido') {
+        await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'porsurtir', ts_surtiendo:'', ts_surtido:'', surtidor:'', rack:''});
+      }
+      return {ok:true, id, turno};
+    }
+    if (action === 'tomarLinea') {
+      const rows = await sbGet('lineas', `id=eq.${encodeURIComponent(data.id)}&select=status`);
+      if (!rows.length) return {ok:false, error:'Línea no encontrada'};
+      if (rows[0].status !== 'porsurtir') return {ok:false, error:'Esta línea ya fue tomada'};
+      await sbPatch('lineas', `id=eq.${encodeURIComponent(data.id)}`, {status:'surtiendo', surtidor:data.surtidor, ts_surtiendo:nowMX()});
+      return {ok:true};
+    }
+    if (action === 'surtirLinea') {
+      const rows = await sbGet('lineas', `id=eq.${encodeURIComponent(data.id)}&select=status,surtidor`);
+      if (!rows.length) return {ok:false, error:'Línea no encontrada'};
+      if (rows[0].status !== 'surtiendo') return {ok:false, error:'La línea no está en surtiendo'};
+      if (rows[0].surtidor !== data.surtidor) return {ok:false, error:'Esta línea la está surtiendo: '+rows[0].surtidor};
+      await sbPatch('lineas', `id=eq.${encodeURIComponent(data.id)}`, {status:'surtido', rack:data.rack, ts_surtido:nowMX()});
+      return {ok:true};
+    }
+
+    // ── CHAT ───────────────────────────────────────────────────────────────
+    if (action === 'getChat') {
+      const rows = await sbGet('chat', `folio=eq.${encodeURIComponent(data.folio)}&select=*&order=id.asc`);
+      return {ok:true, mensajes:rows};
+    }
+    if (action === 'sendChat') {
+      await sbPost('chat', {folio:data.folio, usuario:data.usuario, nombre:data.nombre, texto:data.texto, ts:nowMX()});
+      return {ok:true};
+    }
+
+    // ── LOG ────────────────────────────────────────────────────────────────
+    if (action === 'setUrgenciaPass') {
+      localStorage.setItem('urgencia_pass', data.pass); return {ok:true};
+    }
+
+    return {ok:false, error:'Acción desconocida: '+action};
   } catch(e) {
-    return apiDemo(action, data);
+    console.error('API Error:', e);
+    return {ok:false, error:e.message||'Error de conexión'};
   }
-}
-
-function apiDemo(action, data) {
-  const pedidos = JSON.parse(localStorage.getItem('demo_pedidos') || '[]');
-  const users = JSON.parse(localStorage.getItem('demo_users') || JSON.stringify(DEMO_USERS));
-  const chats = JSON.parse(localStorage.getItem('demo_chats') || '{}');
-  const savePedidos = () => localStorage.setItem('demo_pedidos', JSON.stringify(pedidos));
-  const saveUsers = () => localStorage.setItem('demo_users', JSON.stringify(users));
-  const saveChats = () => localStorage.setItem('demo_chats', JSON.stringify(chats));
-  const now = () => new Date().toLocaleString('es-MX');
-
-  if (action==='login') {
-    const u = users.find(u=>u.usuario===data.usuario&&u.password===data.password&&u.activo!=='NO');
-    if (u) return {ok:true,usuario:u.usuario,nombre:u.nombre,rol:u.rol};
-    return {ok:false,error:'Usuario o contraseña incorrectos'};
-  }
-  if (action==='getUsuarios') return {ok:true,usuarios:users.map(u=>({usuario:u.usuario,nombre:u.nombre,rol:u.rol,activo:u.activo}))};
-  if (action==='getPedidos') return {ok:true,pedidos};
-  if (action==='getClientes') return {ok:true,clientes:[...new Set(pedidos.map(p=>p.cliente))].filter(Boolean)};
-  if (action==='getNextFolio') {
-    const next=pedidos.length+1;
-    return {ok:true,folio:'#'+String(next).padStart(4,'0')};
-  }
-  if (action==='newPedido') {
-    if (pedidos.find(p=>p.folio===data.folio)) return {ok:false,error:'El folio '+data.folio+' ya existe'};
-    const consecutivo=pedidos.length+1;
-    const turno='#'+String(consecutivo).padStart(4,'0');
-    pedidos.push({folio:data.folio,consecutivo,turno,cliente:data.cliente,notas:data.notas||'',vendedor:data.vendedor,status:'porsurtir',urgente:false,ts_registro:now(),ts_surtiendo:'',ts_surtido:'',ts_enviado:'',ts_cancelado:'',surtidor:'',rack:'',cancelado_por:''});
-    savePedidos(); return {ok:true,folio:data.folio,consecutivo,turno};
-  }
-  if (action==='setUrgenciaPass') {
-    localStorage.setItem('urgencia_pass', data.pass); return {ok:true};
-  }
-  if (action==='marcarUrgente') {
-    const PASS_URGENCIA=localStorage.getItem('urgencia_pass')||'urgente123';
-    if (data.pass!==PASS_URGENCIA) return {ok:false,error:'Contraseña de urgencia incorrecta'};
-    const p=pedidos.find(p=>p.folio===data.folio);
-    if (!p) return {ok:false,error:'Folio no encontrado'};
-    p.urgente=true; savePedidos(); return {ok:true};
-  }
-  if (action==='tomarPedido') {
-    const p=pedidos.find(p=>p.folio===data.folio);
-    if (!p) return {ok:false,error:'Folio no encontrado'};
-    if (p.status!=='porsurtir') return {ok:false,error:'El pedido ya fue tomado'};
-    p.status='surtiendo';p.surtidor=data.surtidor;p.ts_surtiendo=now();
-    savePedidos(); return {ok:true,pedido:p};
-  }
-  if (action==='surtirPedido') {
-    const p=pedidos.find(p=>p.folio===data.folio);
-    if (!p) return {ok:false,error:'Folio no encontrado'};
-    if (p.status!=='surtiendo') return {ok:false,error:'El pedido no está en surtiendo'};
-    if (p.surtidor!==data.surtidor) return {ok:false,error:'Este pedido lo está surtiendo: '+p.surtidor};
-    p.status='surtido';p.rack=data.rack;p.ts_surtido=now();
-    savePedidos(); return {ok:true,pedido:p};
-  }
-  if (action==='enviarPedido') {
-    const p=pedidos.find(p=>p.folio===data.folio);
-    if (!p) return {ok:false,error:'Folio no encontrado'};
-    if (p.status!=='surtido') return {ok:false,error:'El pedido aún no está surtido'};
-    p.status='enviado';p.ts_enviado=now();
-    savePedidos(); return {ok:true,pedido:p};
-  }
-  if (action==='cancelarPedido') {
-    const p=pedidos.find(p=>p.folio===data.folio);
-    if (!p) return {ok:false,error:'Folio no encontrado'};
-    if (p.status==='cancelado') return {ok:false,error:'Ya está cancelado'};
-    p.status='cancelado';p.cancelado_por=data.cancelado_por;p.ts_cancelado=now();
-    savePedidos(); return {ok:true};
-  }
-  if (action==='addUsuario') {
-    if (users.find(u=>u.usuario===data.usuario)) return {ok:false,error:'Usuario ya existe'};
-    users.push({usuario:data.usuario,password:data.password,nombre:data.nombre,rol:data.rol,activo:'SI'});
-    saveUsers(); return {ok:true};
-  }
-  if (action==='toggleUsuario') {
-    const u=users.find(u=>u.usuario===data.usuario);
-    if (!u) return {ok:false,error:'No encontrado'};
-    u.activo=u.activo==='NO'?'SI':'NO';
-    saveUsers(); return {ok:true,activo:u.activo};
-  }
-  if (action==='cambiarPassword') {
-    const u=users.find(u=>u.usuario===data.usuario);
-    if (!u) return {ok:false,error:'No encontrado'};
-    if (data.actual && u.password!==data.actual) return {ok:false,error:'Contraseña actual incorrecta'};
-    u.password=data.nueva; saveUsers(); return {ok:true};
-  }
-  if (action==='getLineas') {
-    const lineas=JSON.parse(localStorage.getItem('demo_lineas')||'[]');
-    return {ok:true,lineas:lineas.filter(l=>l.folio===data.folio)};
-  }
-  if (action==='addLinea') {
-    const lineas=JSON.parse(localStorage.getItem('demo_lineas')||'[]');
-    const p=pedidos.find(p=>p.folio===data.folio);
-    if (!p) return {ok:false,error:'Folio no encontrado'};
-    if (p.vendedor!==data.vendedor) return {ok:false,error:'Solo el vendedor que creó el folio puede agregar mercancía'};
-    if (p.status==='cancelado') return {ok:false,error:'El pedido está cancelado'};
-    if (p.status==='enviado') return {ok:false,error:'El pedido ya fue enviado'};
-    const id='LIN-'+Date.now();
-    const consecutivoGlobal = pedidos.length + lineas.length + 1;
-    const turno = '#L'+String(consecutivoGlobal).padStart(4,'0');
-    lineas.push({id,folio:data.folio,nota:data.nota,vendedor:data.vendedor,status:'porsurtir',consecutivo:consecutivoGlobal,turno,ts_registro:now(),ts_surtiendo:'',ts_surtido:'',surtidor:'',rack:''});
-    localStorage.setItem('demo_lineas',JSON.stringify(lineas));
-    if (p.status==='surtido'){p.status='porsurtir';p.ts_surtiendo='';p.ts_surtido='';p.surtidor='';p.rack='';savePedidos();}
-    return {ok:true,id,turno};
-  }
-  if (action==='tomarLinea') {
-    const lineas=JSON.parse(localStorage.getItem('demo_lineas')||'[]');
-    const l=lineas.find(l=>l.id===data.id);
-    if (!l) return {ok:false,error:'Línea no encontrada'};
-    if (l.status!=='porsurtir') return {ok:false,error:'Esta línea ya fue tomada'};
-    l.status='surtiendo';l.surtidor=data.surtidor;l.ts_surtiendo=now();
-    localStorage.setItem('demo_lineas',JSON.stringify(lineas));
-    return {ok:true};
-  }
-  if (action==='surtirLinea') {
-    const lineas=JSON.parse(localStorage.getItem('demo_lineas')||'[]');
-    const l=lineas.find(l=>l.id===data.id);
-    if (!l) return {ok:false,error:'Línea no encontrada'};
-    if (l.status!=='surtiendo') return {ok:false,error:'La línea no está en surtiendo'};
-    if (l.surtidor!==data.surtidor) return {ok:false,error:'Esta línea la está surtiendo: '+l.surtidor};
-    l.status='surtido';l.rack=data.rack;l.ts_surtido=now();
-    localStorage.setItem('demo_lineas',JSON.stringify(lineas));
-    return {ok:true};
-  }
-  if (action==='getAllLineas') {
-    const lineas=JSON.parse(localStorage.getItem('demo_lineas')||'[]');
-    return {ok:true,lineas};
-  }
-  if (action==='getChat') {
-    return {ok:true,mensajes:chats[data.folio]||[]};
-  }
-  if (action==='sendChat') {
-    if (!chats[data.folio]) chats[data.folio]=[];
-    chats[data.folio].push({usuario:data.usuario,nombre:data.nombre,texto:data.texto,ts:now()});
-    saveChats(); return {ok:true};
-  }
-  return {ok:false,error:'Acción desconocida'};
 }
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
@@ -1058,7 +1113,7 @@ function initApp() {
   roleEl.textContent=SESSION.rol.toUpperCase();
   roleEl.className='topbar-role '+SESSION.rol;
   if (DARK_MODE) document.getElementById('dark-btn').textContent='☀️';
-  document.getElementById('sheets-url') && (document.getElementById('sheets-url').value=SHEETS_URL);
+  // Supabase — sin URL de Sheets
   buildNav();
   loadClientes();
   startAutoRefresh();
@@ -1072,7 +1127,7 @@ function buildNav() {
   if (SESSION.rol === 'almacen') {
     setTimeout(async () => { await cargarPedidos(); renderAlmacen(); }, 500);
   }
-  if (!SHEETS_URL) toast('Modo demo activo. Configura Google Sheets en Admin.','info',6000);
+  toast('Conectado a Supabase ✅','success',3000);
 }
 
 function navByRole(rol) {
@@ -1109,7 +1164,7 @@ function switchPanel(name) {
     if (clearBtn) clearBtn.style.display='none';
     (async()=>{ await cargarPedidos(); renderAlmacen(); })();
   }
-  if (name==='admin') { document.getElementById('sheets-url').value=SHEETS_URL; cargarUsuariosAdmin(); renderSucursalesList(); }
+  if (name==='admin') { cargarUsuariosAdmin(); renderSucursalesList(); }
 }
 
 // ─── AUTO REFRESH — SISTEMA COMPLETO ─────────────────────────────────────────
@@ -1805,69 +1860,26 @@ async function consultarPedido() {
 // Horario hábil: Lun-Vie 10:00-19:30 / Sáb 10:00-14:00 / Dom cerrado
 function esHorarioHabil(fecha) {
   if (!fecha) return false;
-  const dow = fecha.getDay();
-  const mins = fecha.getHours() * 60 + fecha.getMinutes();
-  if (dow === 0) return false;
-  if (dow >= 1 && dow <= 5) return mins >= 600 && mins <= 1170;
-  if (dow === 6) return mins >= 600 && mins <= 840;
+  const dow = fecha.getDay(); // 0=Dom, 6=Sáb
+  const h = fecha.getHours(), m = fecha.getMinutes();
+  const mins = h * 60 + m;
+  if (dow === 0) return false; // Domingo cerrado
+  if (dow >= 1 && dow <= 5) return mins >= 600 && mins <= 1170; // 10:00-19:30
+  if (dow === 6) return mins >= 600 && mins <= 840; // 10:00-14:00
   return false;
 }
 
-// Minutos hábiles por día de la semana (Lun-Vie=570, Sáb=240, Dom=0)
-function _minsHabilesEnDia(dow) {
-  if (dow === 0) return 0;
-  if (dow >= 1 && dow <= 5) return 570; // 10:00-19:30
-  if (dow === 6) return 240; // 10:00-14:00
-  return 0;
-}
-
-// Minutos hábiles desde inicio del día hasta 'mins' para un día dado
-function _minsHabilesHasta(dow, mins) {
-  if (dow === 0) return 0;
-  const inicio = 600;
-  const fin = dow === 6 ? 840 : 1170;
-  if (mins <= inicio) return 0;
-  return Math.min(mins, fin) - inicio;
-}
-
-// Minutos hábiles entre dos fechas — cálculo O(días) en lugar de O(minutos)
+// Minutos hábiles entre dos fechas
 function minutosHabiles(desde, hasta) {
   if (!desde || !hasta || hasta <= desde) return 0;
-  
-  // Si están en el mismo día
-  const desdeDia = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
-  const hastaDia = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
-  
-  if (desdeDia.getTime() === hastaDia.getTime()) {
-    const dow = desde.getDay();
-    const m1 = desde.getHours() * 60 + desde.getMinutes();
-    const m2 = hasta.getHours() * 60 + hasta.getMinutes();
-    if (dow === 0) return 0;
-    const inicio = 600, fin = dow === 6 ? 840 : 1170;
-    const a = Math.max(m1, inicio), b = Math.min(m2, fin);
-    return Math.max(0, b - a);
+  let mins = 0;
+  const cur = new Date(desde);
+  // Avanzar minuto a minuto — eficiente para rangos típicos de almacén (<24h)
+  while (cur < hasta) {
+    if (esHorarioHabil(cur)) mins++;
+    cur.setMinutes(cur.getMinutes() + 1);
   }
-  
-  // Primer día: desde la hora de inicio hasta fin del día hábil
-  let total = 0;
-  const dow0 = desde.getDay();
-  const m0 = desde.getHours() * 60 + desde.getMinutes();
-  total += _minsHabilesHasta(dow0, dow0 === 6 ? 840 : 1170) - _minsHabilesHasta(dow0, m0);
-  
-  // Días intermedios completos
-  const cur = new Date(desdeDia);
-  cur.setDate(cur.getDate() + 1);
-  while (cur < hastaDia) {
-    total += _minsHabilesEnDia(cur.getDay());
-    cur.setDate(cur.getDate() + 1);
-  }
-  
-  // Último día: desde inicio hasta la hora de fin
-  const dowN = hasta.getDay();
-  const mN = hasta.getHours() * 60 + hasta.getMinutes();
-  total += _minsHabilesHasta(dowN, mN);
-  
-  return Math.max(0, total);
+  return mins;
 }
 
 function fmtMins(m) {
@@ -2549,11 +2561,7 @@ function eliminarSucursal(idx) {
   toast('Sucursal eliminada','info');
 }
 
-function guardarURL(){
-  const url=document.getElementById('sheets-url').value.trim();
-  SHEETS_URL=url; localStorage.setItem('pedidos_sheets_url',url);
-  toast('URL guardada','success'); loadClientes();
-}
+function guardarURL(){ toast('Usando Supabase — no se requiere URL','info'); }
 function guardarUrgPass(){
   toast('La contraseña de urgencias está configurada en el sistema','info');
 }
