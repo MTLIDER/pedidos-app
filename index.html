@@ -956,15 +956,26 @@ async function api(action, data = {}) {
       return {ok:true, clientes};
     }
     if (action === 'getNextFolio') {
-      const rows = await sbGet('pedidos', 'select=consecutivo&order=consecutivo.desc&limit=1');
-      const next = rows.length ? rows[0].consecutivo + 1 : 1;
+      const [pedRows, linRows] = await Promise.all([
+        sbGet('pedidos', 'select=consecutivo&order=consecutivo.desc&limit=1'),
+        sbGet('lineas', 'select=consecutivo&order=consecutivo.desc&limit=1')
+      ]);
+      const maxPed = pedRows.length ? pedRows[0].consecutivo : 0;
+      const maxLin = linRows.length ? linRows[0].consecutivo : 0;
+      const next = Math.max(maxPed, maxLin) + 1;
       return {ok:true, folio:'#'+String(next).padStart(4,'0')};
     }
     if (action === 'newPedido') {
       const exists = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=folio`);
       if (exists.length) return {ok:false, error:'El folio '+data.folio+' ya existe'};
-      const rows = await sbGet('pedidos', 'select=consecutivo&order=consecutivo.desc&limit=1');
-      const consecutivo = rows.length ? rows[0].consecutivo + 1 : 1;
+      // Secuencia global — respeta turnos de líneas agregadas
+      const [pedRows2, linRows2] = await Promise.all([
+        sbGet('pedidos', 'select=consecutivo&order=consecutivo.desc&limit=1'),
+        sbGet('lineas', 'select=consecutivo&order=consecutivo.desc&limit=1')
+      ]);
+      const maxP2 = pedRows2.length ? pedRows2[0].consecutivo : 0;
+      const maxL2 = linRows2.length ? linRows2[0].consecutivo : 0;
+      const consecutivo = Math.max(maxP2, maxL2) + 1;
       const turno = '#'+String(consecutivo).padStart(4,'0');
       await sbPost('pedidos', {
         folio:data.folio, consecutivo, turno, cliente:data.cliente,
@@ -1004,6 +1015,10 @@ async function api(action, data = {}) {
     }
     if (action === 'cancelarPedido') {
       const res = await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'cancelado', cancelado_por:data.cancelado_por, ts_cancelado:nowMX()});
+      return {ok:true};
+    }
+    if (action === 'editarFechaEnvio') {
+      await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {ts_enviado: data.ts_enviado});
       return {ok:true};
     }
 
@@ -1618,7 +1633,7 @@ async function abrirPedido(folio) {
       ${lineas.map((l,i)=>buildLineaCard(l,i+1)).join('')}
     </div>`:''}
     <div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--ink3);margin-bottom:10px;">Historial del folio</div>
-    <div class="timeline">${buildTimeline(p)}</div>
+    <div class="timeline">${buildTimeline(p, lineas)}</div>
     ${buildActions(p)}
     <div class="chat-section">
       <div class="chat-title">💬 Comentarios del pedido</div>
@@ -1658,23 +1673,100 @@ async function enviarChat() {
   }
 }
 
-function buildTimeline(p) {
+function buildTimeline(p, lineas) {
+  // ── Eventos del pedido principal ────────────────────────────────────────────
   const steps=[
-    {label:'Pedido registrado',time:p.ts_registro,detail:`Por ${p.vendedor}`,done:true},
-    {label:'Tomado para surtir',time:p.ts_surtiendo,detail:p.surtidor?`Por ${p.surtidor}`:'',done:!!p.ts_surtiendo},
-    {label:'Surtido',time:p.ts_surtido,detail:p.rack?`Rack ${p.rack}`:'',done:!!p.ts_surtido},
-    {label:'Enviado / Pagado',time:p.ts_enviado,detail:'',done:!!p.ts_enviado},
+    {label:'Pedido registrado',time:p.ts_registro,detail:'Por '+p.vendedor,done:true},
+    {label:'Tomado para surtir',time:p.ts_surtiendo,detail:p.surtidor?'Por '+p.surtidor:'',done:!!p.ts_surtiendo},
+    {label:'Surtido',time:p.ts_surtido,detail:p.rack?'Rack '+p.rack:'',done:!!p.ts_surtido},
+    {label:'Enviado / Pagado',time:p.ts_enviado,detail:'',done:!!p.ts_enviado,isEnvio:true},
   ];
-  if (p.status==='cancelado') steps.push({label:'Cancelado',time:p.ts_cancelado,detail:p.cancelado_por?`Por ${p.cancelado_por}`:'',done:true,cancel:true});
-  return steps.map((s,i)=>`
+  if (p.status==='cancelado') steps.push({label:'Cancelado',time:p.ts_cancelado,detail:p.cancelado_por?'Por '+p.cancelado_por:'',done:true,cancel:true});
+
+  let html = steps.map((s,i) => {
+    const editBtn = s.isEnvio && s.done && SESSION && SESSION.rol==='admin'
+      ? `<button onclick="abrirEditarFechaEnvio('${p.folio}','${s.time||''}')" style="margin-top:4px;padding:3px 8px;font-size:10px;background:none;border:1px solid var(--ink3);border-radius:3px;cursor:pointer;color:var(--ink3);">✏️ Editar fecha</button>`
+      : '';
+    return `
     <div class="tl-item">
       <div class="tl-dot ${s.cancel?'cancel':s.done?'done':''}">${s.cancel?'✕':s.done?'✓':i+1}</div>
       <div class="tl-content">
         <div class="tl-label" style="${s.cancel?'color:var(--red)':''}">${s.label}</div>
         ${s.time?`<div class="tl-time">${s.time}</div>`:''}
         ${s.detail?`<div class="tl-detail">${s.detail}</div>`:''}
+        ${editBtn}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  // ── Líneas agregadas — cada una con su propia bitácora ───────────────────
+  if (lineas && lineas.length) {
+    lineas.forEach((l, idx) => {
+      const lSteps = [
+        {label:'Línea '+(idx+1)+' agregada',time:l.ts_registro,detail:'Por '+l.vendedor,done:true,nota:l.nota},
+        {label:'Tomada para surtir',time:l.ts_surtiendo,detail:l.surtidor?'Por '+l.surtidor:'',done:!!l.ts_surtiendo},
+        {label:'Línea surtida',time:l.ts_surtido,detail:l.rack?'Rack '+l.rack:'',done:!!l.ts_surtido},
+      ];
+      html += `<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
+        <div style="font-size:10px;color:var(--ink3);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">📦 ${l.nota||'Línea '+( idx+1)}</div>`;
+      html += lSteps.map((s,i) => `
+        <div class="tl-item">
+          <div class="tl-dot" style="width:24px;height:24px;font-size:11px;${s.done?'background:var(--brand-blue,#0ea5d8);border-color:var(--brand-blue,#0ea5d8);color:#fff;':''}">${s.done?'✓':i+1}</div>
+          <div class="tl-content">
+            <div class="tl-label" style="font-size:12px;">${s.label}</div>
+            ${s.time?`<div class="tl-time">${s.time}</div>`:''}
+            ${s.detail?`<div class="tl-detail">${s.detail}</div>`:''}
+          </div>
+        </div>`).join('');
+      html += '</div>';
+    });
+  }
+  return html;
+}
+
+// Admin edita la fecha de envío de un pedido
+function abrirEditarFechaEnvio(folio, tsActual) {
+  // Convertir dd/mm/yyyy hh:mm:ss a formato datetime-local
+  let dtVal = '';
+  if (tsActual) {
+    const m = tsActual.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+    if (m) dtVal = m[3]+'-'+m[2]+'-'+m[1]+'T'+m[4]+':'+m[5];
+  }
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--surface);border-radius:12px;padding:28px;max-width:380px;width:90%;box-shadow:var(--shadow-lg);">
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px;">✏️ Editar fecha de envío</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:16px;">Folio: <strong>${folio}</strong> — Solo admin puede editar esta fecha.</div>
+    <div class="form-field" style="margin-bottom:16px;">
+      <label>Fecha y hora de envío</label>
+      <input type="datetime-local" id="edit-ts-envio" value="${dtVal}"
+        style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;">
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="confirmarEditarFechaEnvio('${folio}',this.closest('div[style*=fixed]'))">✔ Guardar</button>
+      <button class="btn btn-ghost" onclick="this.closest('div[style*=fixed]').remove()">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.querySelector('input')?.focus(), 100);
+}
+
+async function confirmarEditarFechaEnvio(folio, overlay) {
+  const dt = document.getElementById('edit-ts-envio').value;
+  if (!dt) { toast('Selecciona una fecha','error'); return; }
+  // Convertir datetime-local a dd/mm/yyyy hh:mm:ss
+  const d = new Date(dt);
+  const pad = n => String(n).padStart(2,'0');
+  const ts = pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+  showLoading('Guardando...');
+  const res = await api('editarFechaEnvio', {folio, ts_enviado: ts});
+  hideLoading();
+  if (res.ok) {
+    overlay.remove();
+    toast('Fecha de envío actualizada','success');
+    await cargarPedidos();
+    abrirPedido(folio);
+  } else toast(res.error, 'error');
 }
 
 function buildActions(p) {
@@ -1850,7 +1942,7 @@ async function consultarPedido() {
     </div>
     ${p.notas?`<div style="padding:10px 14px;background:var(--surface2);border-radius:var(--radius);font-size:13px;margin-bottom:18px;">📝 ${p.notas}</div>`:''}
     ${p.rack?`<div style="padding:10px 14px;background:#d1e7dd;border-radius:var(--radius);font-size:14px;font-weight:600;margin-bottom:18px;color:#0a3622;">📍 Pedido en Rack <strong>${p.rack}</strong></div>`:''}
-    <div class="timeline">${buildTimeline(p)}</div>
+    <div class="timeline">${buildTimeline(p, [])}</div>
   </div>`;
 }
 
