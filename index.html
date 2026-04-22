@@ -1047,7 +1047,9 @@ async function api(action, data = {}) {
       const id = 'LIN-'+Date.now();
       await sbPost('lineas', {id, folio:data.folio, nota:data.nota, vendedor:data.vendedor, status:'porsurtir', ts_registro:nowMX(), ts_surtiendo:'', ts_surtido:'', surtidor:'', rack:'', consecutivo, turno});
       if (p.status === 'surtido') {
-        await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'porsurtir', ts_surtiendo:'', ts_surtido:'', surtidor:'', rack:''});
+        // Solo cambia status — conserva timestamps originales como historial
+        // Los campos de surtido del pedido principal quedan intactos
+        await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'porsurtir'});
       }
       return {ok:true, id, turno};
     }
@@ -1675,10 +1677,13 @@ async function enviarChat() {
 
 function buildTimeline(p, lineas) {
   // ── Eventos del pedido principal ────────────────────────────────────────────
+  // Si el pedido regresó a porsurtir por una línea agregada, mostrar historial previo
+  const tieneSurtidoPrevio = p.ts_surtido && p.ts_surtido.trim() !== '' && p.status === 'porsurtir';
   const steps=[
     {label:'Pedido registrado',time:p.ts_registro,detail:'Por '+p.vendedor,done:true},
     {label:'Tomado para surtir',time:p.ts_surtiendo,detail:p.surtidor?'Por '+p.surtidor:'',done:!!p.ts_surtiendo},
-    {label:'Surtido',time:p.ts_surtido,detail:p.rack?'Rack '+p.rack:'',done:!!p.ts_surtido},
+    {label:'Surtido',time:p.ts_surtido,detail:p.rack?'Rack '+p.rack:'',done:!!p.ts_surtido,
+     extraNote: tieneSurtidoPrevio ? '⚠️ Pendiente nueva línea agregada' : ''},
     {label:'Enviado / Pagado',time:p.ts_enviado,detail:'',done:!!p.ts_enviado,isEnvio:true},
   ];
   if (p.status==='cancelado') steps.push({label:'Cancelado',time:p.ts_cancelado,detail:p.cancelado_por?'Por '+p.cancelado_por:'',done:true,cancel:true});
@@ -1694,6 +1699,7 @@ function buildTimeline(p, lineas) {
         <div class="tl-label" style="${s.cancel?'color:var(--red)':''}">${s.label}</div>
         ${s.time?`<div class="tl-time">${s.time}</div>`:''}
         ${s.detail?`<div class="tl-detail">${s.detail}</div>`:''}
+        ${s.extraNote?`<div style="font-size:11px;color:var(--orange);margin-top:3px;font-weight:600;">${s.extraNote}</div>`:''}
         ${editBtn}
       </div>
     </div>`;
