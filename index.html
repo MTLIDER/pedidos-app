@@ -793,9 +793,13 @@ body{overflow-x:hidden;}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
         <button class="filter-tab active" id="alm-tab-todos" onclick="almSetFilter('todos')">Todos</button>
         <button class="filter-tab" id="alm-tab-porsurtir" onclick="almSetFilter('porsurtir')">Por Surtir</button>
+        <button class="filter-tab" id="alm-tab-agregado" onclick="almSetFilter('agregado')">+ Agregado x Surtir</button>
         <button class="filter-tab" id="alm-tab-surtiendo" onclick="almSetFilter('surtiendo')">Surtiendo</button>
         <button class="filter-tab" id="alm-tab-surtido" onclick="almSetFilter('surtido')">Surtido</button>
         <button class="filter-tab" id="alm-tab-enviado" onclick="almSetFilter('enviado')">Enviado</button>
+        <button class="filter-tab" id="alm-tab-cancelado" onclick="almSetFilter('cancelado')">Cancelado</button>
+        <button class="filter-tab" id="alm-tab-vencido" onclick="almSetFilter('vencido')">Vencido</button>
+        <button class="filter-tab" id="alm-tab-vencido_surtido" onclick="almSetFilter('vencido_surtido')">Surtido Vencido</button>
         <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
           <button id="alm-btn-grid" class="btn btn-primary" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('grid')" title="Tarjetas">⊞</button>
           <button id="alm-btn-list" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onclick="almSetVista('list')" title="Lista">☰</button>
@@ -2872,7 +2876,16 @@ function renderAlmacen() {
   const grid = document.getElementById('almacen-grid');
   if (!grid) return;
   let pedidos = [...ALL_PEDIDOS];
-  if (ALM_FILTER !== 'todos') pedidos = pedidos.filter(p => p.status === ALM_FILTER);
+  const foliosAgregadosAlm = new Set(ALL_LINEAS.filter(l => l.status === 'porsurtir').map(l => l.folio));
+  if (ALM_FILTER === 'vencido') {
+    pedidos = pedidos.filter(p => isVencido(p));
+  } else if (ALM_FILTER === 'vencido_surtido') {
+    pedidos = pedidos.filter(p => isVencidoSurtido(p));
+  } else if (ALM_FILTER === 'agregado') {
+    pedidos = pedidos.filter(p => foliosAgregadosAlm.has(p.folio));
+  } else if (ALM_FILTER !== 'todos') {
+    pedidos = pedidos.filter(p => p.status === ALM_FILTER);
+  }
 
   // Filtro de búsqueda rápida por folio o cliente
   if (ALM_SEARCH) {
