@@ -1065,11 +1065,24 @@ async function api(action, data = {}) {
       return {ok:true};
     }
     if (action === 'surtirLinea') {
-      const rows = await sbGet('lineas', `id=eq.${encodeURIComponent(data.id)}&select=status,surtidor`);
+      const rows = await sbGet('lineas', `id=eq.${encodeURIComponent(data.id)}&select=status,surtidor,folio`);
       if (!rows.length) return {ok:false, error:'Línea no encontrada'};
       if (rows[0].status !== 'surtiendo') return {ok:false, error:'La línea no está en surtiendo'};
       if (rows[0].surtidor !== data.surtidor) return {ok:false, error:'Esta línea la está surtiendo: '+rows[0].surtidor};
+      const folioLinea = rows[0].folio;
       await sbPatch('lineas', `id=eq.${encodeURIComponent(data.id)}`, {status:'surtido', rack:data.rack, ts_surtido:nowMX()});
+      // Verificar si quedan líneas pendientes en este folio
+      const lineasPendientes = await sbGet('lineas',
+        `folio=eq.${encodeURIComponent(folioLinea)}&status=in.(porsurtir,surtiendo)&select=id`);
+      if (!lineasPendientes.length) {
+        // Todas las líneas surtidas — actualizar pedido principal a surtido
+        const pedPadre = await sbGet('pedidos', `folio=eq.${encodeURIComponent(folioLinea)}&select=status,ts_surtido`);
+        if (pedPadre.length && pedPadre[0].status === 'porsurtir') {
+          // Pedido reactivado por línea — marcar como surtido de nuevo
+          await sbPatch('pedidos', `folio=eq.${encodeURIComponent(folioLinea)}`,
+            {status:'surtido', surtidor:data.surtidor, rack:data.rack, ts_surtido:nowMX()});
+        }
+      }
       return {ok:true};
     }
 
