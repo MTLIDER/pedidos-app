@@ -2939,7 +2939,8 @@ function renderAlmacen() {
         const ds = getDisplayStatus(p);
         const badge = `<span class="badge badge-${ds}" style="font-size:10px;">${STATUS_LABELS[ds]||STATUS_LABELS[p.status]}</span>`;
         let accion = '';
-        if (p.status==='porsurtir') {
+        const esReactivadoLista = p.status==='porsurtir' && p.ts_surtido && p.ts_surtido.trim()!=='';
+        if (p.status==='porsurtir' && !esReactivadoLista) {
           const esSig = siguiente && siguiente.type==='pedido' && siguiente.id===p.folio;
           if (esSig) {
             accion=`<button class="btn btn-success" style="padding:4px 10px;font-size:11px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar</button>`;
@@ -2947,6 +2948,8 @@ function renderAlmacen() {
             const pos = cola.findIndex(x=>x.type==='pedido'&&x.id===p.folio);
             accion=`<span style="font-size:11px;color:var(--ink3);">🔒 pos ${pos>=0?pos+1:'?'}</span> <button class="btn btn-ghost" style="padding:2px 7px;font-size:10px;" onclick="almTomarPedido('${p.folio}')">⚡Admin</button>`;
           }
+        } else if (esReactivadoLista) {
+          accion=`<span style="font-size:11px;color:var(--green);">✔ Rack ${p.rack} — ver líneas</span>`;
         } else if (p.status==='surtiendo') {
           accion=`<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="almSurtirPedido('${p.folio}','${p.surtidor}')">✔ Surtido</button>`;
         }
@@ -2985,8 +2988,13 @@ function buildAlmacenCard(p) {
   const badgeHtml = `<span class="badge badge-${ds}">${STATUS_LABELS[ds]||STATUS_LABELS[p.status]}</span>`;
   const turnoHtml = p.turno ? `<span style="font-family:var(--font-mono);font-size:11px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-weight:700;">${p.turno}</span>` : '';
 
+  // Si el pedido regresó a porsurtir por una línea agregada (tiene ts_surtido previo),
+  // no mostrar botón de tomar el pedido principal — solo mostrar las líneas pendientes
+  const tieneLineasPendientes = ALL_LINEAS.some(l => l.folio === p.folio && (l.status === 'porsurtir' || l.status === 'surtiendo'));
+  const esReactivadoPorLinea = p.status === 'porsurtir' && p.ts_surtido && p.ts_surtido.trim() !== '';
+
   let accionHtml = '';
-  if (p.status === 'porsurtir') {
+  if (p.status === 'porsurtir' && !esReactivadoPorLinea) {
     const esSiguiente = siguiente && siguiente.type === 'pedido' && siguiente.id === p.folio;
     if (esSiguiente) {
       accionHtml = `<button class="btn btn-success" style="width:100%;margin-top:12px;" onclick="almTomarPedido('${p.folio}')">🔧 Tomar pedido</button>`;
@@ -3000,6 +3008,9 @@ function buildAlmacenCard(p) {
         </div>
         <button class="btn btn-ghost" style="width:100%;margin-top:8px;font-size:11px;" onclick="almTomarPedido('${p.folio}')">⚡ Solicitar adelanto (requiere admin)</button>`;
     }
+  } else if (p.status === 'porsurtir' && esReactivadoPorLinea) {
+    // Pedido reactivado por línea agregada — mostrar info del surtido previo
+    accionHtml = `<div style="font-size:12px;color:var(--green);margin-top:8px;">✔ Surtido previamente en Rack ${p.rack} por ${p.surtidor}</div>`;
   } else if (p.status === 'surtiendo') {
     accionHtml = `
       <div style="font-size:12px;color:var(--ink3);margin-top:8px;">Surtidor: <strong style="color:var(--ink)">${p.surtidor}</strong></div>
