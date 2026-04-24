@@ -2836,22 +2836,35 @@ function getDisplayStatus(p) {
 
 // ─── COLA GLOBAL ─────────────────────────────────────────────────────────────
 function buildGlobalQueue() {
+  // Pedidos en porsurtir SIN surtido previo (pedidos nuevos normales)
   const pedidosQueue = ALL_PEDIDOS
-    .filter(x => x.status==='porsurtir')
+    .filter(x => x.status==='porsurtir' && !(x.ts_surtido && x.ts_surtido.trim()!==''))
     .map(x => ({
       type:'pedido',
       id: x.folio,
       folio: x.folio,
       consecutivo: String(x.urgente)==='true' ? -1 : (parseInt(x.consecutivo)||9999)
     }));
+
+  // Líneas pendientes — si el pedido padre fue reactivado, heredan su consecutivo
   const lineasQueue = ALL_LINEAS
     .filter(x => x.status==='porsurtir')
-    .map(x => ({
-      type:'linea',
-      id: x.id,
-      folio: x.folio,
-      consecutivo: parseInt(x.consecutivo)||9999
-    }));
+    .map(x => {
+      const pedidoPadre = ALL_PEDIDOS.find(p => p.folio === x.folio);
+      const esReactivado = pedidoPadre && pedidoPadre.ts_surtido && pedidoPadre.ts_surtido.trim()!=='';
+      // Si el pedido padre fue reactivado, usar el consecutivo del pedido padre
+      // para que la línea ocupe el mismo lugar en la cola
+      const cons = esReactivado
+        ? (parseInt(pedidoPadre.consecutivo)||9999)
+        : (parseInt(x.consecutivo)||9999);
+      return {
+        type:'linea',
+        id: x.id,
+        folio: x.folio,
+        consecutivo: cons
+      };
+    });
+
   return [...pedidosQueue, ...lineasQueue].sort((a,b) => a.consecutivo - b.consecutivo);
 }
 
