@@ -1367,9 +1367,17 @@ function checkVencidos() {
   ALL_PEDIDOS.forEach(p => {
     // ── Vencido tipo 1: porsurtir que lleva más de HORAS_LIMITE horas en cola ──
     if (p.status === 'porsurtir') {
-      const ts = parseDate(p.ts_registro);
-      if (!ts) return;
-      const horas = (Date.now() - ts.getTime()) / 3600000;
+      const esReact = p.ts_surtido && p.ts_surtido.trim() !== '';
+      let tsCheck;
+      if (esReact) {
+        const lp = ALL_LINEAS.filter(l => l.folio===p.folio && l.status==='porsurtir' && l.ts_registro)
+          .sort((a,b)=>{ const ta=parseDate(a.ts_registro),tb=parseDate(b.ts_registro); return (tb?tb.getTime():0)-(ta?ta.getTime():0); });
+        tsCheck = lp.length ? parseDate(lp[0].ts_registro) : parseDate(p.ts_registro);
+      } else {
+        tsCheck = parseDate(p.ts_registro);
+      }
+      if (!tsCheck) return;
+      const horas = (Date.now() - tsCheck.getTime()) / 3600000;
       if (horas > HORAS_LIMITE) {
         const afecta = SESSION.rol==='admin' || (SESSION.rol==='vendedor' && p.vendedor===SESSION.username);
         if (afecta) {
@@ -1410,9 +1418,24 @@ function parseDate(str) {
 // Vencido tipo 1: pedido en cola sin surtir demasiado tiempo
 function isVencido(p) {
   if (p.status !== 'porsurtir') return false;
-  const ts = parseDate(p.ts_registro);
-  if (!ts) return false;
-  return (Date.now() - ts.getTime()) / 3600000 > HORAS_LIMITE;
+  // Si el pedido fue surtido y regresó por línea agregada,
+  // usar la fecha de la última línea pendiente en lugar del ts_registro original
+  const esReactivado = p.ts_surtido && p.ts_surtido.trim() !== '';
+  let tsRef;
+  if (esReactivado) {
+    // Buscar la línea más reciente de este folio en estado porsurtir
+    const lineasPendientes = ALL_LINEAS
+      .filter(l => l.folio === p.folio && l.status === 'porsurtir' && l.ts_registro)
+      .sort((a,b) => {
+        const ta = parseDate(a.ts_registro), tb = parseDate(b.ts_registro);
+        return (tb ? tb.getTime() : 0) - (ta ? ta.getTime() : 0);
+      });
+    tsRef = lineasPendientes.length ? parseDate(lineasPendientes[0].ts_registro) : parseDate(p.ts_registro);
+  } else {
+    tsRef = parseDate(p.ts_registro);
+  }
+  if (!tsRef) return false;
+  return (Date.now() - tsRef.getTime()) / 3600000 > HORAS_LIMITE;
 }
 
 // Vencido tipo 2: pedido surtido que lleva 15+ días sin enviarse
@@ -1554,7 +1577,16 @@ function renderPedidos() {
       <tbody>${pedidos.map(p=>{
         const venc=isVencido(p);
         const vencSurt=isVencidoSurtido(p);
-        const ts=parseDate(p.ts_registro);
+        const esReact2 = p.status==='porsurtir' && p.ts_surtido && p.ts_surtido.trim()!=='';
+        let tsBase2;
+        if (esReact2) {
+          const lp2 = ALL_LINEAS.filter(l=>l.folio===p.folio&&l.status==='porsurtir'&&l.ts_registro)
+            .sort((a,b)=>{ const ta=parseDate(a.ts_registro),tb=parseDate(b.ts_registro); return (tb?tb.getTime():0)-(ta?ta.getTime():0); });
+          tsBase2 = lp2.length ? parseDate(lp2[0].ts_registro) : parseDate(p.ts_registro);
+        } else {
+          tsBase2 = parseDate(p.ts_registro);
+        }
+        const ts=tsBase2;
         const mins=ts?Math.round((Date.now()-ts.getTime())/60000):0;
         const tiempoStr=mins<60?mins+'min':Math.round(mins/60)+'h '+mins%60+'min';
         const diasSurt = vencSurt ? diasDesdeSurtido(p) : 0;
