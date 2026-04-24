@@ -1786,7 +1786,10 @@ function buildActions(p) {
   const _isVS = isVencidoSurtido(p);
   let html='<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:18px;display:flex;flex-wrap:wrap;gap:8px;">';
 
-  if ((rol==='surtidor'||rol==='admin') && p.status==='porsurtir') {
+  // ¿El pedido regresó a porsurtir por una línea agregada?
+  const esReactivadoPorLinea = p.status==='porsurtir' && p.ts_surtido && p.ts_surtido.trim()!=='';
+
+  if ((rol==='surtidor'||rol==='admin') && p.status==='porsurtir' && !esReactivadoPorLinea) {
     const globalQueue = buildGlobalQueue();
     const nextItem = globalQueue[0];
     const isNext = nextItem && nextItem.type==='pedido' && nextItem.folio===p.folio;
@@ -1807,6 +1810,11 @@ function buildActions(p) {
         <br><button class="btn btn-warn" style="margin-top:10px;padding:7px 14px;font-size:12px;" onclick="marcarUrgente('${p.folio}')">⚡ Solicitar adelantar (requiere clave admin)</button>
       </div>`;
     }
+  } else if (esReactivadoPorLinea) {
+    // Solo mostrar info del surtido previo — las líneas se manejan arriba en el modal
+    html+=`<div style="padding:10px 14px;background:rgba(0,200,83,.08);border:1.5px solid var(--green);border-radius:var(--radius);font-size:13px;color:var(--green);width:100%;">
+      ✔ Pedido surtido en Rack ${p.rack} por ${p.surtidor} — pendiente(s) línea(s) agregada(s)
+    </div>`;
   }
 
   if ((rol==='surtidor'||rol==='admin') && p.status==='surtiendo') {
@@ -2959,7 +2967,7 @@ function renderAlmacen() {
           const esSigL = siguiente && siguiente.type==='linea' && siguiente.id===l.id;
           if (esSigL) return `<button class="btn btn-success" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almTomarLinea('${l.id}')">+Linea</button>`;
           const posL = cola.findIndex(x=>x.type==='linea'&&x.id===l.id);
-          return `<button class="btn btn-ghost" style="padding:2px 7px;font-size:10px;margin-left:4px;" onclick="almTomarLinea('${l.id}')">🔒L${posL>=0?posL+1:'?'}</button>`;
+          return `<button class="btn btn-ghost" style="padding:2px 7px;font-size:10px;margin-left:4px;" title="Pos #${posL>=0?posL+1:'?'} en cola global" onclick="almTomarLinea('${l.id}')">🔒 Tomar línea</button>`;
         }).join('');
         if (linSurt.length) accion += linSurt.map(l=>`<button class="btn btn-primary" style="padding:3px 8px;font-size:10px;margin-left:4px;" onclick="almSurtirLinea('${l.id}','${l.surtidor}')">✔Linea</button>`).join('');
         return `<tr style="border-bottom:1px solid var(--border);">
