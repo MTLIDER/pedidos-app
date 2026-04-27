@@ -407,8 +407,8 @@ body{overflow-x:hidden;}
       <!-- Selector de intervalo -->
       <select class="refresh-interval-select" id="refresh-interval-select" title="Intervalo de actualización" onchange="setRefreshInterval(parseInt(this.value))">
         <option value="15">15s</option>
-        <option value="30" selected>30s</option>
-        <option value="60">1 min</option>
+        <option value="30">30s</option>
+        <option value="60" selected>1 min</option>
         <option value="120">2 min</option>
         <option value="0">Manual</option>
       </select>
@@ -637,8 +637,8 @@ body{overflow-x:hidden;}
             <label>Intervalo de actualización</label>
             <select id="cfg-intervalo" style="padding:11px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;outline:none;" onchange="setRefreshInterval(parseInt(this.value));document.getElementById('refresh-interval-select').value=this.value">
               <option value="15">15 segundos</option>
-              <option value="30" selected>30 segundos</option>
-              <option value="60">1 minuto</option>
+              <option value="30">30 segundos</option>
+              <option value="60" selected>1 minuto</option>
               <option value="120">2 minutos</option>
               <option value="0">Manual (desactivado)</option>
             </select>
@@ -951,7 +951,7 @@ async function api(action, data = {}) {
 
     // ── PEDIDOS ────────────────────────────────────────────────────────────
     if (action === 'getPedidos') {
-      const rows = await sbGet('pedidos', 'select=*&order=consecutivo.asc&limit=2000');
+      const rows = await sbGet('pedidos', 'select=folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por&order=consecutivo.asc&limit=2000');
       return {ok:true, pedidos:rows};
     }
     if (action === 'getClientes') {
@@ -1028,7 +1028,7 @@ async function api(action, data = {}) {
 
     // ── LÍNEAS ─────────────────────────────────────────────────────────────
     if (action === 'getAllLineas') {
-      const rows = await sbGet('lineas', 'select=*&order=consecutivo.asc&limit=2000');
+      const rows = await sbGet('lineas', 'select=id,folio,nota,vendedor,status,ts_registro,ts_surtiendo,ts_surtido,surtidor,rack,consecutivo,turno&order=consecutivo.asc&limit=2000');
       return {ok:true, lineas:rows};
     }
     if (action === 'getLineas') {
@@ -1204,7 +1204,7 @@ function switchPanel(name) {
 // ─── AUTO REFRESH — SISTEMA COMPLETO ─────────────────────────────────────────
 let _refreshInterval = null;         // setInterval handle
 let _progressTimer = null;           // requestAnimationFrame handle
-let _refreshIntervalSecs = parseInt(localStorage.getItem('pedidos_refresh_interval') || '30');
+let _refreshIntervalSecs = parseInt(localStorage.getItem('pedidos_refresh_interval') || '60');
 let _nextRefreshAt = 0;              // timestamp de la próxima actualización
 let _lastRefreshAt = 0;              // timestamp de la última actualización
 
