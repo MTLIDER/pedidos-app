@@ -837,7 +837,8 @@ const SB_HEADERS = {
   'apikey': SUPABASE_KEY,
   'Authorization': 'Bearer ' + SUPABASE_KEY,
   'Content-Type': 'application/json',
-  'Prefer': 'return=representation'
+  'Prefer': 'return=representation',
+  'Accept-Encoding': 'gzip, deflate'
 };
 
 // Helper Supabase REST
@@ -846,14 +847,26 @@ async function sbGet(table, params='') {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function sbPost(table, body) {
-  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table, {method:'POST', headers: SB_HEADERS, body: JSON.stringify(body)});
+async function sbPost(table, body, returnData=false) {
+  const prefer = returnData ? 'return=representation' : 'return=minimal';
+  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table, {
+    method:'POST',
+    headers: {...SB_HEADERS, 'Prefer': prefer},
+    body: JSON.stringify(body)
+  });
   if (!r.ok) throw new Error(await r.text());
+  if (!returnData) return [];
   return r.json();
 }
-async function sbPatch(table, params, body) {
-  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {method:'PATCH', headers: {...SB_HEADERS, 'Prefer':'return=representation'}, body: JSON.stringify(body)});
+async function sbPatch(table, params, body, returnData=false) {
+  const prefer = returnData ? 'return=representation' : 'return=minimal';
+  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {
+    method:'PATCH',
+    headers: {...SB_HEADERS, 'Prefer': prefer},
+    body: JSON.stringify(body)
+  });
   if (!r.ok) throw new Error(await r.text());
+  if (!returnData) return [];
   return r.json();
 }
 async function sbRpc(fn, body={}) {
@@ -956,21 +969,20 @@ async function api(action, data = {}) {
     }
     // Refresh parcial — solo pedidos con actividad reciente (updated_at >= since)
     if (action === 'getPedidosRecientes') {
-      // Pedidos activos (porsurtir/surtiendo) + pedidos modificados recientemente
+      const CP = 'folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por';
       const [activos, recientes] = await Promise.all([
-        sbGet('pedidos', 'select=folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por&status=in.(porsurtir,surtiendo)&order=consecutivo.asc'),
-        sbGet('pedidos', `select=folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por&created_at=gte.${encodeURIComponent(data.since)}&order=consecutivo.asc`)
+        sbGet('pedidos', `select=${CP}&status=in.(porsurtir,surtiendo)&order=consecutivo.asc`),
+        sbGet('pedidos', `select=${CP}&created_at=gte.${encodeURIComponent(data.since)}&order=consecutivo.asc`)
       ]);
-      // Unir sin duplicados
       const map = {};
       [...recientes, ...activos].forEach(p => map[p.folio] = p);
       return {ok:true, pedidos:Object.values(map)};
     }
-    // Refresh parcial — solo líneas recientes
     if (action === 'getLineasRecientes') {
+      const CL = 'id,folio,nota,vendedor,status,ts_registro,ts_surtiendo,ts_surtido,surtidor,rack,consecutivo,turno';
       const [activas, recientes] = await Promise.all([
-        sbGet('lineas', 'select=id,folio,nota,vendedor,status,ts_registro,ts_surtiendo,ts_surtido,surtidor,rack,consecutivo,turno&status=in.(porsurtir,surtiendo)&order=consecutivo.asc'),
-        sbGet('lineas', `select=id,folio,nota,vendedor,status,ts_registro,ts_surtiendo,ts_surtido,surtidor,rack,consecutivo,turno&created_at=gte.${encodeURIComponent(data.since)}&order=consecutivo.asc`)
+        sbGet('lineas', `select=${CL}&status=in.(porsurtir,surtiendo)&order=consecutivo.asc`),
+        sbGet('lineas', `select=${CL}&created_at=gte.${encodeURIComponent(data.since)}&order=consecutivo.asc`)
       ]);
       const map = {};
       [...recientes, ...activas].forEach(l => map[l.id] = l);
@@ -1110,7 +1122,7 @@ async function api(action, data = {}) {
 
     // ── CHAT ───────────────────────────────────────────────────────────────
     if (action === 'getChat') {
-      const rows = await sbGet('chat', `folio=eq.${encodeURIComponent(data.folio)}&select=*&order=id.asc`);
+      const rows = await sbGet('chat', `folio=eq.${encodeURIComponent(data.folio)}&select=folio,usuario,nombre,texto,ts&order=id.asc&limit=20`);
       return {ok:true, mensajes:rows};
     }
     if (action === 'sendChat') {
@@ -1169,9 +1181,18 @@ function initApp() {
   roleEl.textContent=SESSION.rol.toUpperCase();
   roleEl.className='topbar-role '+SESSION.rol;
   if (DARK_MODE) document.getElementById('dark-btn').textContent='☀️';
-  // Supabase — sin URL de Sheets
   buildNav();
   loadClientes();
+
+  // 💾 Cargar desde caché local primero (instantáneo, sin red)
+  const teniamosCache = cargarDesdeCache();
+  if (teniamosCache) {
+    checkVencidos();
+    renderPedidos();
+    toast('📂 Datos locales cargados — sincronizando...','info',2500);
+  }
+
+  // Sincronizar con Supabase en background
   startAutoRefresh();
 }
 
@@ -1256,17 +1277,31 @@ function scheduleNext() {
   stopAutoRefresh();
   if (_refreshIntervalSecs === 0) return;
   _nextRefreshAt = Date.now() + _refreshIntervalSecs * 1000;
-  // Barra de progreso — animación CSS con transition
   setProgressFill(1, true, _refreshIntervalSecs);
   setRefreshDotState('active');
-  // Iniciar ticker para el countdown en el label
   tickCountdown();
-  // Programar la actualización
   _refreshInterval = setTimeout(async () => {
+    // ✅ No gastar egress si la pestaña está en background
+    if (document.visibilityState === 'hidden') {
+      scheduleNext();
+      return;
+    }
     await doAutoRefresh();
-    scheduleNext(); // Reprogramar después de completar
+    scheduleNext();
   }, _refreshIntervalSecs * 1000);
 }
+
+// Cuando el usuario regresa a la pestaña, refrescar inmediatamente
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && SESSION && _refreshIntervalSecs > 0) {
+    const tiempoInactivo = Date.now() - _lastRefreshAt;
+    // Solo refrescar si pasaron más de 2 minutos inactivo
+    if (tiempoInactivo > 120000) {
+      stopAutoRefresh();
+      doAutoRefresh().then(() => scheduleNext());
+    }
+  }
+});
 
 function tickCountdown() {
   if (_progressTimer) cancelAnimationFrame(_progressTimer);
@@ -1352,16 +1387,16 @@ async function manualRefresh() {
   if (_refreshIntervalSecs > 0) scheduleNext();
 }
 
-// ── CARGA COMPLETA DIARIA ────────────────────────────────────────────────────
-// Clave en localStorage para saber cuándo fue la última carga completa
-const FULL_LOAD_KEY = 'pedidos_last_full_load';
+// ── CACHÉ LOCAL (localStorage) ───────────────────────────────────────────────
+const FULL_LOAD_KEY   = 'pedidos_last_full_load';
+const CACHE_PED_KEY   = 'pedidos_cache_pedidos';
+const CACHE_LIN_KEY   = 'pedidos_cache_lineas';
 
 function necesitaCargaCompleta() {
   const last = localStorage.getItem(FULL_LOAD_KEY);
   if (!last) return true;
   const lastDate = new Date(parseInt(last));
   const ahora = new Date();
-  // Nueva carga completa si: es otro día O si ya pasaron las 10:00 de hoy y la última fue antes de las 10:00
   const mismodia = lastDate.toDateString() === ahora.toDateString();
   if (!mismodia) return true;
   const hoy10 = new Date(ahora); hoy10.setHours(10, 0, 0, 0);
@@ -1373,6 +1408,35 @@ function marcarCargaCompleta() {
   localStorage.setItem(FULL_LOAD_KEY, Date.now().toString());
 }
 
+// Guardar copia en localStorage
+function guardarCache(pedidos, lineas) {
+  try {
+    localStorage.setItem(CACHE_PED_KEY, JSON.stringify(pedidos));
+    localStorage.setItem(CACHE_LIN_KEY, JSON.stringify(lineas));
+  } catch(e) {
+    // Si el localStorage está lleno, limpiar cache viejo y reintentar
+    localStorage.removeItem(CACHE_PED_KEY);
+    localStorage.removeItem(CACHE_LIN_KEY);
+    console.warn('Cache localStorage lleno, se limpió:', e);
+  }
+}
+
+// Cargar desde localStorage (instantáneo, sin red)
+function cargarDesdeCache() {
+  try {
+    const pedStr = localStorage.getItem(CACHE_PED_KEY);
+    const linStr = localStorage.getItem(CACHE_LIN_KEY);
+    if (pedStr) {
+      ALL_PEDIDOS = JSON.parse(pedStr);
+      ALL_LINEAS  = linStr ? JSON.parse(linStr) : [];
+      return true;
+    }
+  } catch(e) {
+    console.warn('Error leyendo cache:', e);
+  }
+  return false;
+}
+
 async function cargaCompleta() {
   setRefreshDotState('syncing');
   try {
@@ -1381,6 +1445,7 @@ async function cargaCompleta() {
     ALL_PEDIDOS = resPed.pedidos || [];
     ALL_LINEAS  = resLin.ok ? resLin.lineas : [];
     marcarCargaCompleta();
+    guardarCache(ALL_PEDIDOS, ALL_LINEAS); // 💾 Guardar en localStorage
     _lastRefreshAt = Date.now();
     checkVencidos();
     setRefreshDotState('active');
@@ -1429,6 +1494,11 @@ async function doAutoRefresh() {
       const idx = ALL_LINEAS.findIndex(x => x.id === l.id);
       if (idx >= 0) ALL_LINEAS[idx] = l; else ALL_LINEAS.push(l);
     });
+
+    // 💾 Actualizar caché con los datos mezclados
+    if (pedidosNuevos.length > 0 || lineasNuevas.length > 0) {
+      guardarCache(ALL_PEDIDOS, ALL_LINEAS);
+    }
 
     _lastRefreshAt = Date.now();
     if (pedidosNuevos.length > 0) checkNotifications(prevPedidos, ALL_PEDIDOS);
@@ -1616,7 +1686,8 @@ async function cargarPedidos() {
   if (!resPed.ok){toast('Error cargando pedidos','error');return;}
   ALL_PEDIDOS = resPed.pedidos||[];
   ALL_LINEAS  = resLin.ok ? resLin.lineas : [];
-  marcarCargaCompleta(); // Registrar que se hizo carga completa
+  marcarCargaCompleta();
+  guardarCache(ALL_PEDIDOS, ALL_LINEAS); // 💾 Guardar en localStorage
   checkVencidos();
   renderPedidos();
   if (document.getElementById('panel-almacen')?.classList.contains('active')) renderAlmacen();
