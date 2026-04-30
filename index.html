@@ -1549,7 +1549,7 @@ function checkVencidos() {
       const esReact = p.ts_surtido && p.ts_surtido.trim() !== '';
       let tsCheck;
       if (esReact) {
-        const lp = ALL_LINEAS.filter(l => l.folio===p.folio && l.status==='porsurtir' && l.ts_registro)
+        const lp = ALL_LINEAS.filter(l => l.folio===p.folio && (l.status==='porsurtir'||l.status==='surtiendo') && l.ts_registro)
           .sort((a,b)=>{ const ta=parseDate(a.ts_registro),tb=parseDate(b.ts_registro); return (tb?tb.getTime():0)-(ta?ta.getTime():0); });
         tsCheck = lp.length ? parseDate(lp[0].ts_registro) : parseDate(p.ts_registro);
       } else {
@@ -1602,9 +1602,9 @@ function isVencido(p) {
   const esReactivado = p.ts_surtido && p.ts_surtido.trim() !== '';
   let tsRef;
   if (esReactivado) {
-    // Buscar la línea más reciente de este folio en estado porsurtir
+    // Buscar la línea más reciente de este folio pendiente (porsurtir O surtiendo)
     const lineasPendientes = ALL_LINEAS
-      .filter(l => l.folio === p.folio && l.status === 'porsurtir' && l.ts_registro)
+      .filter(l => l.folio === p.folio && (l.status === 'porsurtir' || l.status === 'surtiendo') && l.ts_registro)
       .sort((a,b) => {
         const ta = parseDate(a.ts_registro), tb = parseDate(b.ts_registro);
         return (tb ? tb.getTime() : 0) - (ta ? ta.getTime() : 0);
