@@ -3027,24 +3027,16 @@ function buildGlobalQueue() {
       consecutivo: String(x.urgente)==='true' ? -1 : (parseInt(x.consecutivo)||9999)
     }));
 
-  // Líneas pendientes — si el pedido padre fue reactivado, heredan su consecutivo
+  // Líneas pendientes — SIEMPRE usan su propio consecutivo (FIFO real)
+  // El pedido padre reactivado NO transfiere su prioridad a las líneas nuevas
   const lineasQueue = ALL_LINEAS
     .filter(x => x.status==='porsurtir')
-    .map(x => {
-      const pedidoPadre = ALL_PEDIDOS.find(p => p.folio === x.folio);
-      const esReactivado = pedidoPadre && pedidoPadre.ts_surtido && pedidoPadre.ts_surtido.trim()!=='';
-      // Si el pedido padre fue reactivado, usar el consecutivo del pedido padre
-      // para que la línea ocupe el mismo lugar en la cola
-      const cons = esReactivado
-        ? (parseInt(pedidoPadre.consecutivo)||9999)
-        : (parseInt(x.consecutivo)||9999);
-      return {
-        type:'linea',
-        id: x.id,
-        folio: x.folio,
-        consecutivo: cons
-      };
-    });
+    .map(x => ({
+      type:'linea',
+      id: x.id,
+      folio: x.folio,
+      consecutivo: parseInt(x.consecutivo)||9999
+    }));
 
   return [...pedidosQueue, ...lineasQueue].sort((a,b) => a.consecutivo - b.consecutivo);
 }
