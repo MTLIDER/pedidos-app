@@ -1554,7 +1554,15 @@ function checkNotifications(prev, curr) {
         (SESSION.rol==='vendedor' && p.vendedor===SESSION.username) ||
         (SESSION.rol==='surtidor' && (p.status==='porsurtir' || p.surtidor===SESSION.username));
       if (afecta) {
-        addNotif(`Pedido ${p.folio} → ${STATUS_LABELS[p.status]}`, p.cliente);
+        // Mensaje personalizado según el estado y el rol
+        let msg = '';
+        if (p.status === 'porsurtir') msg = `📋 Nuevo pedido listo para surtir — ${p.folio}`;
+        else if (p.status === 'surtiendo') msg = `🔧 Pedido ${p.folio} tomado por ${p.surtidor}`;
+        else if (p.status === 'surtido') msg = `✅ Pedido ${p.folio} surtido — Rack ${p.rack}`;
+        else if (p.status === 'enviado') msg = `📦 Pedido ${p.folio} marcado como enviado`;
+        else if (p.status === 'cancelado') msg = `❌ Pedido ${p.folio} cancelado`;
+        else msg = `Pedido ${p.folio} → ${STATUS_LABELS[p.status]}`;
+        addNotif(msg, p.cliente);
       }
     }
   });
@@ -3020,7 +3028,10 @@ async function agregarLinea() {
   if (res.ok) {
     toast('Línea agregada al folio '+AG_PEDIDO.folio,'success');
     document.getElementById('ag-nota').value='';
-    addNotif(`Nueva línea en folio ${AG_PEDIDO.folio}`, AG_PEDIDO.cliente);
+    // Notificar solo a surtidores y admin (no al propio vendedor que la agregó)
+    if (SESSION.rol === 'surtidor' || SESSION.rol === 'admin') {
+      addNotif(`📦 Nueva línea agregada — Folio ${AG_PEDIDO.folio}`, AG_PEDIDO.cliente);
+    }
     buscarFolioAgregar();
   } else toast(res.error,'error');
 }
