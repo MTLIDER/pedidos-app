@@ -1254,6 +1254,15 @@ async function api(action, data = {}) {
       await sbPatch('tipos_error', 'id=eq.'+data.id, {activo: !rows[0].activo});
       return {ok:true};
     }
+    if (action === 'editarTipoError') {
+      await sbPatch('tipos_error', 'id=eq.'+data.id, {nombre:data.nombre, aplica_a:data.aplica_a});
+      return {ok:true};
+    }
+    if (action === 'eliminarTipoError') {
+      const r = await fetch(SUPABASE_URL+'/rest/v1/tipos_error?id=eq.'+data.id, {method:'DELETE', headers:SB_HEADERS});
+      if (!r.ok) throw new Error(await r.text());
+      return {ok:true};
+    }
     if (action === 'registrarError') {
       const ahora = new Date();
       const startOfYear = new Date(ahora.getFullYear(), 0, 1);
@@ -3005,32 +3014,43 @@ async function generarReporte() {
 let TIPOS_ERROR = [];
 
 async function initPanelCalidad() {
-  // Cargar tipos de error y usuarios
   const [resTipos, resUsers] = await Promise.all([
     api('getTiposError'),
     api('getUsuarios')
   ]);
   TIPOS_ERROR = resTipos.ok ? resTipos.tipos : [];
 
-  // Llenar select de tipos
-  const selTipo = document.getElementById('cal-tipo');
-  if (selTipo) {
-    selTipo.innerHTML = '<option value="">Selecciona tipo...</option>' +
-      TIPOS_ERROR.map(t => `<option value="${t.id}" data-aplica="${t.aplica_a}">${t.nombre} (${t.aplica_a})</option>`).join('');
-  }
+  // ── Candados de roles ────────────────────────────────────────────────────
+  // Empacador: solo puede calificar a surtidores y vendedores
+  // Admin: puede calificar a todos incluyendo empacadores
+  const rolQuePuedoCalificar = SESSION.rol === 'admin'
+    ? ['surtidor','vendedor','empacador']
+    : ['surtidor','vendedor']; // empacador solo ve surtidor y vendedor
 
-  // Llenar select de responsables (todos los usuarios activos)
+  // Llenar select de responsables filtrado por rol permitido
   const selResp = document.getElementById('cal-responsable');
   if (selResp && resUsers.ok) {
+    const usuariosFiltrados = resUsers.usuarios.filter(u => rolQuePuedoCalificar.includes(u.rol));
     selResp.innerHTML = '<option value="">Selecciona usuario...</option>' +
-      resUsers.usuarios.map(u => `<option value="${u.usuario}" data-rol="${u.rol}">${u.nombre} (${u.rol})</option>`).join('');
+      usuariosFiltrados.map(u => `<option value="${u.usuario}" data-rol="${u.rol}">${u.nombre} (${u.rol})</option>`).join('');
+  }
+
+  // Llenar select de tipos filtrado según quién registra
+  const selTipo = document.getElementById('cal-tipo');
+  if (selTipo) {
+    // Empacador ve tipos de surtidor y vendedor (no de empacador)
+    // Admin ve todos
+    const tiposFiltrados = SESSION.rol === 'admin'
+      ? TIPOS_ERROR
+      : TIPOS_ERROR.filter(t => t.aplica_a === 'surtidor' || t.aplica_a === 'vendedor' || t.aplica_a === 'ambos');
+    selTipo.innerHTML = '<option value="">Selecciona tipo...</option>' +
+      tiposFiltrados.map(t => `<option value="${t.id}" data-aplica="${t.aplica_a}">${t.nombre} (${t.aplica_a})</option>`).join('');
   }
 
   // Fecha label
   const lbl = document.getElementById('cal-fecha-label');
   if (lbl) lbl.textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
 
-  // Cargar errores de hoy
   cargarErroresHoy();
 }
 
@@ -3243,13 +3263,17 @@ async function cargarTiposErrorAdmin() {
     return;
   }
   lista.innerHTML = `<table class="data-table">
-    <thead><tr><th>Nombre</th><th>Aplica a</th><th>Estado</th><th>Acción</th></tr></thead>
+    <thead><tr><th>Nombre</th><th>Aplica a</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody>${res.tipos.map(t=>`
-      <tr>
-        <td>${t.nombre}</td>
-        <td><span style="font-size:11px;background:var(--surface2);padding:2px 8px;border-radius:10px;">${t.aplica_a}</span></td>
+      <tr id="tipo-row-${t.id}">
+        <td><span id="tipo-nombre-${t.id}">${t.nombre}</span></td>
+        <td><span style="font-size:11px;background:var(--surface2);padding:2px 8px;border-radius:10px;" id="tipo-aplica-${t.id}">${t.aplica_a}</span></td>
         <td>${t.activo?'🟢 Activo':'🔴 Inactivo'}</td>
-        <td><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="toggleTipoError(${t.id})">${t.activo?'Desactivar':'Activar'}</button></td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="toggleTipoError(${t.id})">${t.activo?'Desactivar':'Activar'}</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="editarTipoErrorUI(${t.id},'${t.nombre.replace(/'/g,"\'")}','${t.aplica_a}')">✏️ Editar</button>
+          <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;" onclick="eliminarTipoErrorUI(${t.id},'${t.nombre.replace(/'/g,"\'")}')">🗑️ Eliminar</button>
+        </td>
       </tr>`).join('')}
     </tbody>
   </table>`;
@@ -3277,6 +3301,49 @@ function guardarCfgCalidad() {
   const pct = parseFloat(document.getElementById('cfg-pct-error').value)||5;
   localStorage.setItem('calidad_pct_error', pct);
   toast('Configuración de calidad guardada','success');
+}
+
+function editarTipoErrorUI(id, nombreActual, aplicaActual) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10001;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--surface);border-radius:12px;padding:28px;max-width:420px;width:90%;box-shadow:var(--shadow-lg);">
+    <div style="font-weight:700;font-size:16px;margin-bottom:16px;">✏️ Editar tipo de error</div>
+    <div class="form-field" style="margin-bottom:12px;">
+      <label>Nombre</label>
+      <input type="text" id="edit-tipo-nombre" value="${nombreActual}" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;">
+    </div>
+    <div class="form-field" style="margin-bottom:20px;">
+      <label>Aplica a</label>
+      <select id="edit-tipo-aplica" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;">
+        <option value="surtidor" ${aplicaActual==='surtidor'?'selected':''}>Surtidor</option>
+        <option value="vendedor" ${aplicaActual==='vendedor'?'selected':''}>Vendedor</option>
+        <option value="empacador" ${aplicaActual==='empacador'?'selected':''}>Empacador</option>
+        <option value="ambos" ${aplicaActual==='ambos'?'selected':''}>Todos</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="confirmarEditarTipo(${id},this.closest('div[style*=fixed]'))">✔ Guardar</button>
+      <button class="btn btn-ghost" onclick="this.closest('div[style*=fixed]').remove()">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(()=>overlay.querySelector('input')?.focus(),100);
+}
+
+async function confirmarEditarTipo(id, overlay) {
+  const nombre = document.getElementById('edit-tipo-nombre').value.trim();
+  const aplica = document.getElementById('edit-tipo-aplica').value;
+  if (!nombre) { toast('El nombre no puede estar vacío','error'); return; }
+  const res = await api('editarTipoError', {id, nombre, aplica_a: aplica});
+  if (res.ok) { overlay.remove(); toast('Tipo de error actualizado','success'); cargarTiposErrorAdmin(); }
+  else toast(res.error,'error');
+}
+
+async function eliminarTipoErrorUI(id, nombre) {
+  if (!confirm('¿Eliminar el tipo de error "'+nombre+'"? Esta acción no se puede deshacer.')) return;
+  const res = await api('eliminarTipoError', {id});
+  if (res.ok) { toast('Tipo de error eliminado','success'); cargarTiposErrorAdmin(); }
+  else toast(res.error,'error');
 }
 function guardarUrgPass(){
   toast('La contraseña de urgencias está configurada en el sistema','info');
