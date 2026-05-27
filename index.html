@@ -1968,11 +1968,15 @@ function renderPedidos() {
   if (SESSION.rol==='vendedor') pedidos=pedidos.filter(p=>p.vendedor===SESSION.username);
   else if (SESSION.rol==='surtidor') pedidos=pedidos.filter(p=>p.status==='porsurtir'||p.surtidor===SESSION.username);
 
+  const _foliosLinSurtiendo = new Set(ALL_LINEAS.filter(l=>l.status==='surtiendo').map(l=>l.folio));
   if (FILTER_STATUS==='vencido') pedidos=pedidos.filter(p=>isVencido(p));
   else if (FILTER_STATUS==='vencido_surtido') pedidos=pedidos.filter(p=>isVencidoSurtido(p));
   else if (FILTER_STATUS==='agregado') {
     const foliosConAgregados = new Set(ALL_LINEAS.filter(l=>l.status==='porsurtir').map(l=>l.folio));
     pedidos = pedidos.filter(p => foliosConAgregados.has(p.folio));
+  }
+  else if (FILTER_STATUS==='surtiendo') {
+    pedidos = pedidos.filter(p => p.status==='surtiendo' || _foliosLinSurtiendo.has(p.folio));
   }
   else if (FILTER_STATUS!=='todos') pedidos=pedidos.filter(p=>p.status===FILTER_STATUS);
 
@@ -3566,12 +3570,16 @@ function renderAlmacen() {
   if (!grid) return;
   let pedidos = [...ALL_PEDIDOS];
   const foliosAgregadosAlm = new Set(ALL_LINEAS.filter(l => l.status === 'porsurtir').map(l => l.folio));
+  const foliosLineasSurtiendo = new Set(ALL_LINEAS.filter(l => l.status === 'surtiendo').map(l => l.folio));
   if (ALM_FILTER === 'vencido') {
     pedidos = pedidos.filter(p => isVencido(p));
   } else if (ALM_FILTER === 'vencido_surtido') {
     pedidos = pedidos.filter(p => isVencidoSurtido(p));
   } else if (ALM_FILTER === 'agregado') {
     pedidos = pedidos.filter(p => foliosAgregadosAlm.has(p.folio));
+  } else if (ALM_FILTER === 'surtiendo') {
+    // Incluir pedidos en surtiendo Y pedidos con líneas en surtiendo
+    pedidos = pedidos.filter(p => p.status === 'surtiendo' || foliosLineasSurtiendo.has(p.folio));
   } else if (ALM_FILTER !== 'todos') {
     pedidos = pedidos.filter(p => p.status === ALM_FILTER);
   }
