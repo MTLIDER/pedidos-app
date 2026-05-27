@@ -3530,12 +3530,23 @@ function renderAlmacen() {
       infoEl.style.display = 'none';
     }
   }
-  pedidos.sort((a,b) => {
-    const order = {porsurtir:0, surtiendo:1, surtido:2, enviado:3, cancelado:4};
-    const oa = order[a.status]??5, ob = order[b.status]??5;
-    if (oa !== ob) return oa - ob;
-    return (parseInt(a.consecutivo)||9999) - (parseInt(b.consecutivo)||9999);
-  });
+  // Ordenar por cola FIFO global — pendientes primero en orden real de surtido
+  const colaGlobal = buildGlobalQueue();
+  const posEnCola = (p) => {
+    // Si el pedido está en la cola directamente (porsurtir sin surtido previo)
+    const idxPed = colaGlobal.findIndex(x => x.type === 'pedido' && x.folio === p.folio);
+    if (idxPed >= 0) return idxPed;
+    // Si el pedido tiene líneas pendientes en la cola
+    const lineasPend = ALL_LINEAS.filter(l => l.folio === p.folio && l.status === 'porsurtir');
+    if (lineasPend.length) {
+      const idxLin = colaGlobal.findIndex(x => x.type === 'linea' && x.folio === p.folio);
+      if (idxLin >= 0) return idxLin;
+    }
+    // Pedidos fuera de la cola (surtiendo, surtido, enviado) van al final por status
+    const orderStatus = {surtiendo:10000, surtido:20000, enviado:30000, cancelado:40000};
+    return (orderStatus[p.status] || 50000) + (parseInt(p.consecutivo)||9999);
+  };
+  pedidos.sort((a,b) => posEnCola(a) - posEnCola(b));
   if (!pedidos.length) {
     grid.innerHTML = '<div style="color:var(--ink3);padding:40px;text-align:center;grid-column:1/-1;">No hay pedidos</div>';
     grid.style.display = 'grid';
