@@ -737,6 +737,38 @@ body{overflow-x:hidden;}
         </div>
       </div>
 
+      <!-- Tipos de Error -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-weight:600;font-size:15px;margin-bottom:6px;">⚠️ Tipos de Error de Calidad</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;">Configura los tipos de error para el sistema de calidad. Puedes activar/desactivar cada uno.</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+          <input type="text" id="nuevo-tipo-error" placeholder="Nombre del tipo de error" style="flex:1;min-width:200px;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:13px;">
+          <select id="nuevo-tipo-aplica" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:13px;">
+            <option value="surtidor">Surtidor</option>
+            <option value="vendedor">Vendedor</option>
+            <option value="empacador">Empacador</option>
+            <option value="ambos">Todos</option>
+          </select>
+          <button class="btn btn-primary" onclick="agregarTipoError()">+ Agregar</button>
+        </div>
+        <div id="tipos-error-lista"></div>
+      </div>
+
+      <!-- Porcentaje de error permitido -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-weight:600;font-size:15px;margin-bottom:12px;">📊 Configuración de Bonos</div>
+        <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-field">
+            <label>% de error permitido por semana</label>
+            <input type="number" id="cfg-pct-error" value="5" min="0" max="100" step="0.5" style="width:120px;">
+          </div>
+          <button class="btn btn-primary" onclick="guardarCfgCalidad()">Guardar</button>
+        </div>
+        <p style="font-size:12px;color:var(--ink3);margin-top:10px;">
+          El surtidor que supere este porcentaje de errores sobre sus partidas totales semanales recibirá una penalización.
+        </p>
+      </div>
+
       <!-- Usuarios -->
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -825,6 +857,54 @@ body{overflow-x:hidden;}
       <!-- Contador de resultados cuando hay búsqueda activa -->
       <div id="alm-search-info" style="display:none;font-size:12px;color:var(--ink3);margin-bottom:12px;padding:6px 12px;background:var(--surface2);border-radius:var(--radius);border-left:3px solid var(--accent);"></div>
       <div id="almacen-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;"></div>
+    </div>
+
+    <!-- PANEL: CALIDAD -->
+    <div class="panel" id="panel-calidad">
+      <div class="panel-title">Control de Calidad</div>
+      <div class="panel-sub">Registra errores por folio para el cálculo de bonos semanales</div>
+
+      <!-- Registrar nuevo error -->
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-weight:600;font-size:15px;margin-bottom:14px;">📋 Registrar Error</div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Folio del Pedido *</label>
+            <input type="text" id="cal-folio" placeholder="ej. S04501" oninput="this.value=this.value.toUpperCase();buscarFolioCalidad()">
+          </div>
+          <div class="form-field">
+            <label>Responsable del error *</label>
+            <select id="cal-responsable" style="padding:11px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;outline:none;">
+              <option value="">Selecciona usuario...</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Tipo de error *</label>
+            <select id="cal-tipo" style="padding:11px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;outline:none;">
+              <option value="">Selecciona tipo...</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Cantidad de errores *</label>
+            <input type="number" id="cal-cantidad" value="1" min="1" style="width:100%;">
+          </div>
+          <div class="form-field span2">
+            <label>Notas adicionales</label>
+            <textarea id="cal-notas" rows="2" placeholder="Descripción del error, observaciones..."></textarea>
+          </div>
+        </div>
+        <div id="cal-folio-info" style="display:none;margin-top:12px;padding:10px 14px;background:var(--surface2);border-radius:var(--radius);font-size:13px;"></div>
+        <div style="margin-top:16px;">
+          <button class="btn btn-primary" onclick="registrarErrorCalidad()">✔ Registrar Error</button>
+        </div>
+      </div>
+
+      <!-- Errores registrados hoy -->
+      <div class="card">
+        <div style="font-weight:600;font-size:15px;margin-bottom:4px;">Errores registrados hoy</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;" id="cal-fecha-label"></div>
+        <div id="cal-lista-hoy"></div>
+      </div>
     </div>
 
   </div><!-- /app-body -->
@@ -1057,8 +1137,11 @@ async function api(action, data = {}) {
       if (!rows.length) return {ok:false, error:'Folio no encontrado'};
       if (rows[0].status !== 'surtiendo') return {ok:false, error:'El pedido no está en surtiendo'};
       if (rows[0].surtidor !== data.surtidor) return {ok:false, error:'Este pedido lo está surtiendo: '+rows[0].surtidor};
-      const res = await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {status:'surtido', rack:data.rack, ts_surtido:nowMX()});
-      return {ok:true, pedido:res[0]};
+      const updateData = {status:'surtido', rack:data.rack, ts_surtido:nowMX()};
+      if (data.bultos !== undefined) updateData.bultos = parseInt(data.bultos)||0;
+      if (data.partidas !== undefined) updateData.partidas = parseInt(data.partidas)||0;
+      await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, updateData);
+      return {ok:true};
     }
     if (action === 'enviarPedido') {
       const rows = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=status`);
@@ -1151,6 +1234,61 @@ async function api(action, data = {}) {
       localStorage.setItem('urgencia_pass', data.pass); return {ok:true};
     }
 
+    // ── CALIDAD ────────────────────────────────────────────────────────────
+    if (action === 'getTiposError') {
+      const rows = await sbGet('tipos_error', 'select=*&activo=eq.true&order=nombre');
+      return {ok:true, tipos:rows};
+    }
+    if (action === 'getTodosLosTipos') {
+      const rows = await sbGet('tipos_error', 'select=*&order=nombre');
+      return {ok:true, tipos:rows};
+    }
+    if (action === 'addTipoError') {
+      await sbPost('tipos_error', {nombre:data.nombre, aplica_a:data.aplica_a||'ambos', activo:true});
+      return {ok:true};
+    }
+    if (action === 'toggleTipoError') {
+      const rows = await sbGet('tipos_error', 'id=eq.'+data.id+'&select=activo');
+      if (!rows.length) return {ok:false, error:'No encontrado'};
+      await sbPatch('tipos_error', 'id=eq.'+data.id, {activo: !rows[0].activo});
+      return {ok:true};
+    }
+    if (action === 'registrarError') {
+      const ahora = new Date();
+      const startOfYear = new Date(ahora.getFullYear(), 0, 1);
+      const weekNum = Math.ceil(((ahora - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+      const semana = ahora.getFullYear() + '-W' + String(weekNum).padStart(2,'0');
+      const pedRows = await sbGet('pedidos', 'folio=eq.'+encodeURIComponent(data.folio)+'&select=partidas,bultos');
+      const partidasFolio = pedRows.length ? (pedRows[0].partidas||0) : 0;
+      await sbPost('errores_calidad', {
+        folio: data.folio,
+        semana,
+        responsable: data.responsable,
+        rol_responsable: data.rol_responsable,
+        tipo_error_id: data.tipo_error_id||null,
+        tipo_error_nombre: data.tipo_error_nombre||'',
+        cantidad_errores: parseInt(data.cantidad_errores)||1,
+        partidas_folio: partidasFolio,
+        notas: data.notas||'',
+        registrado_por: SESSION ? SESSION.username : '',
+        ts_registro: nowMX()
+      });
+      return {ok:true};
+    }
+    if (action === 'getErroresHoy') {
+      const iso = new Date().toISOString().split('T')[0];
+      const rows = await sbGet('errores_calidad', 'created_at=gte.'+encodeURIComponent(iso+'T00:00:00')+'&select=*&order=created_at.desc');
+      return {ok:true, errores:rows};
+    }
+    if (action === 'getErroresSemana') {
+      const ahora = new Date();
+      const startOfYear = new Date(ahora.getFullYear(), 0, 1);
+      const weekNum = Math.ceil(((ahora - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+      const semana = ahora.getFullYear() + '-W' + String(weekNum).padStart(2,'0');
+      const rows = await sbGet('errores_calidad', 'semana=eq.'+encodeURIComponent(semana)+'&select=*&order=created_at.desc');
+      return {ok:true, errores:rows, semana};
+    }
+
     return {ok:false, error:'Acción desconocida: '+action};
   } catch(e) {
     console.error('API Error:', e);
@@ -1230,7 +1368,8 @@ function navByRole(rol) {
     vendedor:[{label:'+ Nuevo',panel:'nuevo'},{label:'+ Agregar a Folio',panel:'agregar'},{label:'Mis Pedidos',panel:'lista'},{label:'Consultar',panel:'consulta'},{label:'Mi Cuenta',panel:'cuenta'}],
     surtidor:[{label:'Por Surtir',panel:'lista'},{label:'Consultar',panel:'consulta'},{label:'Mi Cuenta',panel:'cuenta'}],
     almacen:[{label:'📦 Almacén',panel:'almacen'},{label:'Consultar',panel:'consulta'}],
-    admin:[{label:'Pedidos',panel:'lista'},{label:'+ Nuevo',panel:'nuevo'},{label:'+ Agregar a Folio',panel:'agregar'},{label:'Consultar',panel:'consulta'},{label:'Reporte',panel:'reporte'},{label:'Admin',panel:'admin'},{label:'Mi Cuenta',panel:'cuenta'}],
+    empacador:[{label:'📋 Registrar Error',panel:'calidad'},{label:'Consultar',panel:'consulta'},{label:'Mi Cuenta',panel:'cuenta'}],
+    admin:[{label:'Pedidos',panel:'lista'},{label:'+ Nuevo',panel:'nuevo'},{label:'+ Agregar a Folio',panel:'agregar'},{label:'Consultar',panel:'consulta'},{label:'Reporte',panel:'reporte'},{label:'Calidad',panel:'calidad'},{label:'Admin',panel:'admin'},{label:'Mi Cuenta',panel:'cuenta'}],
   };
   return map[rol]||map.vendedor;
 }
@@ -1259,7 +1398,8 @@ function switchPanel(name) {
     if (clearBtn) clearBtn.style.display='none';
     (async()=>{ await cargarPedidos(); renderAlmacen(); })();
   }
-  if (name==='admin') { cargarUsuariosAdmin(); renderSucursalesList(); }
+  if (name==='admin') { cargarUsuariosAdmin(); renderSucursalesList(); cargarTiposErrorAdmin(); document.getElementById('cfg-pct-error') && (document.getElementById('cfg-pct-error').value=localStorage.getItem('calidad_pct_error')||5); }
+  if (name==='calidad') { initPanelCalidad(); }
 }
 
 // ─── AUTO REFRESH — SISTEMA COMPLETO ─────────────────────────────────────────
@@ -2126,6 +2266,16 @@ function buildActions(p) {
           <div class="rack-grid">${RACKS.map(r=>`<div class="rack-btn" onclick="selectRack('${r}')">${r}</div>`).join('')}</div>
           <input type="hidden" id="rack-val">
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div class="form-field">
+            <label>Bultos</label>
+            <input type="number" id="surtir-bultos" min="0" value="0" style="width:100%;">
+          </div>
+          <div class="form-field">
+            <label>Partidas (líneas)</label>
+            <input type="number" id="surtir-partidas" min="0" value="0" style="width:100%;">
+          </div>
+        </div>
         <button class="btn btn-success" onclick="surtirPedido('${p.folio}')">✔ Marcar como Surtido</button>
       </div>`;
     } else html+=`<div style="font-size:13px;color:var(--ink3)">Surtiendo: <strong>${p.surtidor}</strong></div>`;
@@ -2164,6 +2314,8 @@ async function tomarPedido(folio) {
 async function surtirPedido(folio) {
   const rack=document.getElementById('rack-val').value;
   if (!rack){toast('Selecciona un rack','error');return;}
+  const bultos = parseInt(document.getElementById('surtir-bultos')?.value||0);
+  const partidas = parseInt(document.getElementById('surtir-partidas')?.value||0);
   const p = ALL_PEDIDOS.find(x=>x.folio===folio);
   const esSuc = p && esSucursal(p);
   const confirmMsg = esSuc
@@ -2171,7 +2323,7 @@ async function surtirPedido(folio) {
     : `¿Confirmar surtido en Rack ${rack}?`;
   if (!confirm(confirmMsg)) return;
   showLoading('Guardando...');
-  const res=await api('surtirPedido',{folio,rack,surtidor:SESSION.username});
+  const res=await api('surtirPedido',{folio,rack,surtidor:SESSION.username,bultos,partidas});
   hideLoading();
   if (res.ok) {
     if (esSuc) {
@@ -2848,6 +3000,111 @@ async function generarReporte() {
 }
 
 
+// ─── PANEL CALIDAD ───────────────────────────────────────────────────────────
+let TIPOS_ERROR = [];
+
+async function initPanelCalidad() {
+  // Cargar tipos de error y usuarios
+  const [resTipos, resUsers] = await Promise.all([
+    api('getTiposError'),
+    api('getUsuarios')
+  ]);
+  TIPOS_ERROR = resTipos.ok ? resTipos.tipos : [];
+
+  // Llenar select de tipos
+  const selTipo = document.getElementById('cal-tipo');
+  if (selTipo) {
+    selTipo.innerHTML = '<option value="">Selecciona tipo...</option>' +
+      TIPOS_ERROR.map(t => `<option value="${t.id}" data-aplica="${t.aplica_a}">${t.nombre} (${t.aplica_a})</option>`).join('');
+  }
+
+  // Llenar select de responsables (todos los usuarios activos)
+  const selResp = document.getElementById('cal-responsable');
+  if (selResp && resUsers.ok) {
+    selResp.innerHTML = '<option value="">Selecciona usuario...</option>' +
+      resUsers.usuarios.map(u => `<option value="${u.usuario}" data-rol="${u.rol}">${u.nombre} (${u.rol})</option>`).join('');
+  }
+
+  // Fecha label
+  const lbl = document.getElementById('cal-fecha-label');
+  if (lbl) lbl.textContent = new Date().toLocaleDateString('es-MX', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+
+  // Cargar errores de hoy
+  cargarErroresHoy();
+}
+
+async function buscarFolioCalidad() {
+  const folio = document.getElementById('cal-folio').value.trim();
+  const info = document.getElementById('cal-folio-info');
+  if (folio.length < 3) { info.style.display='none'; return; }
+  const p = ALL_PEDIDOS.find(x => x.folio.toUpperCase() === folio.toUpperCase());
+  if (!p) { info.style.display='block'; info.innerHTML='❌ Folio no encontrado en el sistema'; return; }
+  // Calcular totales del folio (incluyendo líneas)
+  const lineasFolio = ALL_LINEAS.filter(l => l.folio === p.folio);
+  const totalBultos = (p.bultos||0) + lineasFolio.reduce((s,l)=>s+(l.bultos||0),0);
+  const totalPartidas = (p.partidas||0) + lineasFolio.reduce((s,l)=>s+(l.partidas||0),0);
+  info.style.display='block';
+  info.innerHTML = `<strong>${p.cliente}</strong> — Vendedor: ${p.vendedor} — Surtidor: ${p.surtidor||'—'}
+    <br><span style="color:var(--ink3);">Bultos: <strong>${totalBultos}</strong> &nbsp;|&nbsp; Partidas: <strong>${totalPartidas}</strong> &nbsp;|&nbsp; Estado: <strong>${STATUS_LABELS[p.status]}</strong></span>`;
+}
+
+async function registrarErrorCalidad() {
+  const folio = document.getElementById('cal-folio').value.trim();
+  const respEl = document.getElementById('cal-responsable');
+  const tipoEl = document.getElementById('cal-tipo');
+  const cantidad = parseInt(document.getElementById('cal-cantidad').value)||1;
+  const notas = document.getElementById('cal-notas').value.trim();
+
+  if (!folio) { toast('Ingresa el folio','error'); return; }
+  if (!respEl.value) { toast('Selecciona el responsable','error'); return; }
+  if (!tipoEl.value) { toast('Selecciona el tipo de error','error'); return; }
+
+  const responsable = respEl.value;
+  const rolResp = respEl.options[respEl.selectedIndex].dataset.rol;
+  const tipo_error_id = tipoEl.value;
+  const tipo_error_nombre = tipoEl.options[tipoEl.selectedIndex].text;
+
+  showLoading('Registrando error...');
+  const res = await api('registrarError', {
+    folio, responsable, rol_responsable: rolResp,
+    tipo_error_id, tipo_error_nombre,
+    cantidad_errores: cantidad, notas
+  });
+  hideLoading();
+
+  if (res.ok) {
+    toast('Error registrado correctamente','success');
+    document.getElementById('cal-folio').value='';
+    document.getElementById('cal-cantidad').value='1';
+    document.getElementById('cal-notas').value='';
+    document.getElementById('cal-folio-info').style.display='none';
+    cargarErroresHoy();
+  } else toast(res.error,'error');
+}
+
+async function cargarErroresHoy() {
+  const res = await api('getErroresHoy');
+  const cont = document.getElementById('cal-lista-hoy');
+  if (!cont) return;
+  if (!res.ok || !res.errores.length) {
+    cont.innerHTML='<div style="text-align:center;color:var(--ink3);padding:20px;">Sin errores registrados hoy</div>';
+    return;
+  }
+  cont.innerHTML = `<table class="rank-table">
+    <thead><tr><th>Folio</th><th>Responsable</th><th>Tipo Error</th><th>Cant.</th><th>Registrado por</th><th>Hora</th></tr></thead>
+    <tbody>${res.errores.map(e=>`
+      <tr>
+        <td style="font-family:var(--font-mono);font-weight:700;">${e.folio}</td>
+        <td><strong>${e.responsable}</strong> <span style="font-size:10px;color:var(--ink3);">(${e.rol_responsable})</span></td>
+        <td>${e.tipo_error_nombre}</td>
+        <td style="color:var(--red);font-weight:700;">${e.cantidad_errores}</td>
+        <td style="color:var(--ink3);">${e.registrado_por}</td>
+        <td style="font-size:11px;color:var(--ink3);">${e.ts_registro}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
 // ─── EXPORTAR EXCEL ───────────────────────────────────────────────────────────
 function exportarExcel() {
   let pedidos=[...ALL_PEDIDOS];
@@ -2973,6 +3230,53 @@ function eliminarSucursal(idx) {
 }
 
 function guardarURL(){ toast('Usando Supabase — no se requiere URL','info'); }
+
+// ─── ADMIN: TIPOS DE ERROR ────────────────────────────────────────────────────
+async function cargarTiposErrorAdmin() {
+  const res = await api('getTodosLosTipos');
+  if (!res.ok) return;
+  const lista = document.getElementById('tipos-error-lista');
+  if (!lista) return;
+  if (!res.tipos.length) {
+    lista.innerHTML='<div style="color:var(--ink3);font-size:13px;">Sin tipos de error configurados</div>';
+    return;
+  }
+  lista.innerHTML = `<table class="data-table">
+    <thead><tr><th>Nombre</th><th>Aplica a</th><th>Estado</th><th>Acción</th></tr></thead>
+    <tbody>${res.tipos.map(t=>`
+      <tr>
+        <td>${t.nombre}</td>
+        <td><span style="font-size:11px;background:var(--surface2);padding:2px 8px;border-radius:10px;">${t.aplica_a}</span></td>
+        <td>${t.activo?'🟢 Activo':'🔴 Inactivo'}</td>
+        <td><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="toggleTipoError(${t.id})">${t.activo?'Desactivar':'Activar'}</button></td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+async function agregarTipoError() {
+  const nombre = document.getElementById('nuevo-tipo-error').value.trim();
+  const aplica = document.getElementById('nuevo-tipo-aplica').value;
+  if (!nombre) { toast('Escribe el nombre del tipo de error','error'); return; }
+  const res = await api('addTipoError', {nombre, aplica_a: aplica});
+  if (res.ok) {
+    toast('Tipo de error agregado','success');
+    document.getElementById('nuevo-tipo-error').value='';
+    cargarTiposErrorAdmin();
+  } else toast(res.error,'error');
+}
+
+async function toggleTipoError(id) {
+  const res = await api('toggleTipoError', {id});
+  if (res.ok) { cargarTiposErrorAdmin(); }
+  else toast(res.error,'error');
+}
+
+function guardarCfgCalidad() {
+  const pct = parseFloat(document.getElementById('cfg-pct-error').value)||5;
+  localStorage.setItem('calidad_pct_error', pct);
+  toast('Configuración de calidad guardada','success');
+}
 function guardarUrgPass(){
   toast('La contraseña de urgencias está configurada en el sistema','info');
 }
