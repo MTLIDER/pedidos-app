@@ -1732,7 +1732,7 @@ function checkVencidos() {
         tsCheck = parseDate(p.ts_registro);
       }
       if (!tsCheck) return;
-      const horas = (Date.now() - tsCheck.getTime()) / 3600000;
+      const horas = (ahoraMexico().getTime() - tsCheck.getTime()) / 3600000;
       if (horas > HORAS_LIMITE) {
         const afecta = SESSION.rol==='admin' || (SESSION.rol==='vendedor' && p.vendedor===SESSION.username);
         if (afecta) {
@@ -1765,9 +1765,29 @@ function checkVencidos() {
 
 function parseDate(str) {
   if (!str) return null;
-  const m=str.match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/);
-  if (m) return new Date(m[3],m[2]-1,m[1],m[4],m[5],m[6]);
-  return new Date(str);
+  // Formato dd/mm/yyyy hh:mm:ss (hora local México guardada por nowMX)
+  const m=str.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (m) {
+    // Crear fecha en hora local del navegador — asumiendo mismo huso que México
+    return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1]),
+                    parseInt(m[4]), parseInt(m[5]), parseInt(m[6]));
+  }
+  // Formato ISO — convertir a local
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Hora actual en México (GMT-6, sin ajuste DST para simplicidad)
+function ahoraMexico() {
+  // Usar la hora del sistema — si el sistema está en México ya es correcto
+  // Si el browser está en otra zona, ajustar offset
+  const ahora = new Date();
+  const offsetMexico = -6 * 60; // GMT-6 en minutos
+  const offsetLocal = ahora.getTimezoneOffset(); // minutos detrás de UTC (positivo = atrás)
+  const diffMinutos = offsetLocal - (-offsetMexico); // diferencia entre local y México
+  // Solo ajustar si hay diferencia real
+  if (Math.abs(diffMinutos) < 5) return ahora; // mismo huso, no ajustar
+  return new Date(ahora.getTime() + diffMinutos * 60000);
 }
 
 // Vencido tipo 1: pedido en cola sin surtir demasiado tiempo
@@ -1790,7 +1810,7 @@ function isVencido(p) {
     tsRef = parseDate(p.ts_registro);
   }
   if (!tsRef) return false;
-  return (Date.now() - tsRef.getTime()) / 3600000 > HORAS_LIMITE;
+  return (ahoraMexico().getTime() - tsRef.getTime()) / 3600000 > HORAS_LIMITE;
 }
 
 // Vencido tipo 2: pedido surtido que lleva 15+ días sin enviarse
@@ -1798,7 +1818,7 @@ function isVencidoSurtido(p) {
   if (p.status !== 'surtido') return false;
   const ts = parseDate(p.ts_surtido);
   if (!ts) return false;
-  return (Date.now() - ts.getTime()) / 86400000 >= DIAS_SURTIDO_LIMITE;
+  return (ahoraMexico().getTime() - ts.getTime()) / 86400000 >= DIAS_SURTIDO_LIMITE;
 }
 
 // Días transcurridos desde que se surtió
@@ -2010,7 +2030,7 @@ function renderPedidos() {
           tsBase2 = parseDate(p.ts_registro);
         }
         const ts=tsBase2;
-        const mins=ts?Math.round((Date.now()-ts.getTime())/60000):0;
+        const mins=ts?Math.round((ahoraMexico().getTime()-ts.getTime())/60000):0;
         const tiempoStr=mins<60?mins+'min':Math.round(mins/60)+'h '+mins%60+'min';
         const diasSurt = vencSurt ? diasDesdeSurtido(p) : 0;
         const displayKey = venc?'vencido':vencSurt?'vencido_surtido':getDisplayStatus(p);
