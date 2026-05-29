@@ -1067,12 +1067,16 @@ async function api(action, data = {}) {
     // Refresh parcial — solo pedidos con actividad reciente (updated_at >= since)
     if (action === 'getPedidosRecientes') {
       const CP = 'folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por';
-      const [activos, recientes] = await Promise.all([
+      // Inicio del día en UTC para traer todos los pedidos tocados hoy
+      const hoy = new Date();
+      const inicioHoy = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())).toISOString();
+      const [activos, hoyPedidos, recientes] = await Promise.all([
         sbGet('pedidos', `select=${CP}&status=in.(porsurtir,surtiendo)&order=consecutivo.asc`),
+        sbGet('pedidos', `select=${CP}&created_at=gte.${encodeURIComponent(inicioHoy)}&order=consecutivo.asc`),
         sbGet('pedidos', `select=${CP}&created_at=gte.${encodeURIComponent(data.since)}&order=consecutivo.asc`)
       ]);
       const map = {};
-      [...recientes, ...activos].forEach(p => map[p.folio] = p);
+      [...recientes, ...hoyPedidos, ...activos].forEach(p => map[p.folio] = p);
       return {ok:true, pedidos:Object.values(map)};
     }
     if (action === 'getLineasRecientes') {
