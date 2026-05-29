@@ -1538,19 +1538,17 @@ async function manualRefresh() {
   if (_refreshIntervalSecs > 0) {
     stopAutoRefresh();
     setProgressFill(1, false);
-    setRefreshDotState('syncing');
   }
-  // Refresh manual siempre hace carga completa
-  showLoading('Actualizando...');
+  // Refresh en background — NO bloquear pantalla con loading overlay
+  setRefreshDotState('syncing');
   const ok = await cargaCompleta();
-  hideLoading();
   if (ok) {
     const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
     if (!modalOpen) {
       if (document.getElementById('panel-lista').classList.contains('active')) renderPedidos();
       if (document.getElementById('panel-almacen')?.classList.contains('active')) renderAlmacen();
     }
-    toast('Datos actualizados','success',2000);
+    toast('✅ Actualizado','success',1500);
   }
   if (_refreshIntervalSecs > 0) scheduleNext();
 }
@@ -1937,15 +1935,16 @@ function toggleNotifPanel() {
 document.addEventListener('click',e=>{if(!e.target.closest('#notif-panel')&&!e.target.closest('#notif-btn'))document.getElementById('notif-panel').classList.remove('open');});
 
 // ─── PEDIDOS: CARGAR ──────────────────────────────────────────────────────────
-async function cargarPedidos() {
-  showLoading('Cargando pedidos...');
+async function cargarPedidos(mostrarLoading=true) {
+  // Solo mostrar overlay en primera carga — en refreshes background no bloquear
+  if (mostrarLoading && !cargarDesdeCache()) showLoading('Cargando pedidos...');
   const [resPed, resLin] = await Promise.all([api('getPedidos'), api('getAllLineas')]);
   hideLoading();
   if (!resPed.ok){toast('Error cargando pedidos','error');return;}
   ALL_PEDIDOS = resPed.pedidos||[];
   ALL_LINEAS  = resLin.ok ? resLin.lineas : [];
   marcarCargaCompleta();
-  guardarCache(ALL_PEDIDOS, ALL_LINEAS); // 💾 Guardar en localStorage
+  guardarCache(ALL_PEDIDOS, ALL_LINEAS);
   checkVencidos();
   renderPedidos();
   if (document.getElementById('panel-almacen')?.classList.contains('active')) renderAlmacen();
@@ -4013,7 +4012,7 @@ async function almConfirmarSurtido(folio, surtidor, overlay) {
       if (p) { p.status = 'surtido'; p.rack = rack; }
     }
     renderAlmacen(); // Sin pantalla en blanco
-    cargarPedidos(); // Background sync
+    cargarPedidos(false); // Background sync sin loading
   } else { hideLoading(); toast(res.error, 'error'); }
 }
 
