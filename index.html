@@ -1352,15 +1352,14 @@ function initApp() {
   buildNav();
   loadClientes();
 
-  // 💾 Cargar desde caché local primero (instantáneo, sin red)
+  // 💾 Cargar desde caché local primero — SIEMPRE instantáneo
   const teniamosCache = cargarDesdeCache();
   if (teniamosCache) {
     checkVencidos();
     renderPedidos();
-    toast('📂 Datos locales cargados — sincronizando...','info',2500);
+    // No mostrar toast — es transparente para el usuario
   }
-
-  // Sincronizar con Supabase en background
+  // Sincronizar con Supabase en background (startAutoRefresh llama doAutoRefresh)
   startAutoRefresh();
   // Pedir permiso para notificaciones del sistema
   setTimeout(pedirPermisoNotificaciones, 2000);
@@ -1628,9 +1627,24 @@ async function cargaCompleta() {
 }
 
 async function doAutoRefresh() {
+  // Paso 1: mostrar caché inmediatamente si hay datos — NUNCA pantalla en blanco
+  if (ALL_PEDIDOS.length === 0) {
+    const teniamosCache = cargarDesdeCache();
+    if (teniamosCache) {
+      checkVencidos();
+      const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
+      if (!modalOpen) {
+        if (document.getElementById('panel-lista').classList.contains('active')) renderPedidos();
+        if (document.getElementById('panel-almacen')?.classList.contains('active')) renderAlmacen();
+      }
+    }
+  }
+
+  // Paso 2: sincronizar con Supabase en background
+  setRefreshDotState('syncing');
+
   // ¿Toca carga completa? (primer acceso del día o después de las 10:00)
   if (necesitaCargaCompleta()) {
-    console.log('[Refresh] Carga completa diaria');
     const ok = await cargaCompleta();
     if (!ok) return;
     const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
@@ -1641,8 +1655,7 @@ async function doAutoRefresh() {
     return;
   }
 
-  // Refresh parcial — solo última hora
-  setRefreshDotState('syncing');
+  // Refresh parcial — activos + todos los de hoy + última hora
   try {
     const haceUnaHora = new Date(Date.now() - 3600000).toISOString();
     const [resPed, resLin] = await Promise.all([
@@ -1665,7 +1678,6 @@ async function doAutoRefresh() {
       if (idx >= 0) ALL_LINEAS[idx] = l; else ALL_LINEAS.push(l);
     });
 
-    // 💾 Actualizar caché con los datos mezclados
     if (pedidosNuevos.length > 0 || lineasNuevas.length > 0) {
       guardarCache(ALL_PEDIDOS, ALL_LINEAS);
     }
@@ -1681,7 +1693,7 @@ async function doAutoRefresh() {
     }
     setRefreshDotState('active');
   } catch(e) {
-    console.error('Refresh parcial error:', e);
+    console.error('Refresh error:', e);
     setRefreshDotState('paused');
   }
 }
