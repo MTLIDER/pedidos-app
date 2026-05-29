@@ -3795,8 +3795,18 @@ function almTomarPedido(folio) {
     if (!loginRes.ok || (loginRes.rol !== 'surtidor' && loginRes.rol !== 'admin')) {
       hideLoading(); toast('Usuario o contraseña incorrectos', 'error'); return;
     }
+    // Refrescar activos antes de verificar la cola — evita auth innecesaria por caché viejo
     showLoading('Verificando cola...');
-    await cargarPedidos();
+    const [resPed, resLin] = await Promise.all([
+      api('getPedidosRecientes', {since: new Date(Date.now()-3600000).toISOString()}),
+      api('getLineasRecientes', {since: new Date(Date.now()-3600000).toISOString()})
+    ]);
+    if (resPed.ok) {
+      resPed.pedidos.forEach(p => { const i=ALL_PEDIDOS.findIndex(x=>x.folio===p.folio); if(i>=0)ALL_PEDIDOS[i]=p; else ALL_PEDIDOS.push(p); });
+    }
+    if (resLin.ok) {
+      resLin.lineas.forEach(l => { const i=ALL_LINEAS.findIndex(x=>x.id===l.id); if(i>=0)ALL_LINEAS[i]=l; else ALL_LINEAS.push(l); });
+    }
     hideLoading();
 
     if (loginRes.rol !== 'admin') {
@@ -3823,7 +3833,14 @@ function almTomarPedido(folio) {
           }
           const res2 = await api('tomarPedido', {folio, surtidor: usuario});
           hideLoading();
-          if (res2.ok) { toast('Pedido ' + folio + ' autorizado y asignado a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
+          if (res2.ok) {
+            toast('Pedido ' + folio + ' autorizado y asignado a ' + loginRes.nombre, 'success');
+            // Actualizar caché local inmediatamente sin esperar red
+            const pidx = ALL_PEDIDOS.findIndex(x => x.folio === folio);
+            if (pidx >= 0) { ALL_PEDIDOS[pidx].status = 'surtiendo'; ALL_PEDIDOS[pidx].surtidor = usuario; }
+            renderAlmacen(); // Renderizar con caché actualizado — sin pantalla en blanco
+            cargarPedidos(); // Sincronizar en background
+          }
           else toast(res2.error, 'error');
         });
         return;
@@ -3831,7 +3848,14 @@ function almTomarPedido(folio) {
     }
 
     const res = await api('tomarPedido', {folio, surtidor: usuario});
-    if (res.ok) { toast('Pedido ' + folio + ' asignado a ' + loginRes.nombre, 'success'); await cargarPedidos(); renderAlmacen(); }
+    if (res.ok) {
+      toast('Pedido ' + folio + ' asignado a ' + loginRes.nombre, 'success');
+      // Actualizar caché local inmediatamente
+      const pidx2 = ALL_PEDIDOS.findIndex(x => x.folio === folio);
+      if (pidx2 >= 0) { ALL_PEDIDOS[pidx2].status = 'surtiendo'; ALL_PEDIDOS[pidx2].surtidor = usuario; }
+      renderAlmacen(); // Sin pantalla en blanco
+      cargarPedidos(); // Background sync
+    }
     else toast(res.error, 'error');
   });
 }
@@ -3977,15 +4001,19 @@ async function almConfirmarSurtido(folio, surtidor, overlay) {
   if (res.ok) {
     const p = ALL_PEDIDOS.find(x => x.folio === folio);
     if (p && esSucursal(p)) {
-      // Auto-envío para pedidos de sucursal
       await api('enviarPedido', {folio});
       hideLoading();
       toast('✅ ' + folio + ' surtido y enviado automáticamente — Rack ' + rack, 'success');
+      // Actualizar caché local inmediatamente
+      if (p) { p.status = 'enviado'; p.rack = rack; }
     } else {
       hideLoading();
       toast('Pedido surtido en Rack ' + rack, 'success');
+      // Actualizar caché local inmediatamente
+      if (p) { p.status = 'surtido'; p.rack = rack; }
     }
-    await cargarPedidos(); renderAlmacen();
+    renderAlmacen(); // Sin pantalla en blanco
+    cargarPedidos(); // Background sync
   } else { hideLoading(); toast(res.error, 'error'); }
 }
 
