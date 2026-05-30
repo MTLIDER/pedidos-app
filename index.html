@@ -939,8 +939,14 @@ const SB_HEADERS = {
 };
 
 // Helper Supabase REST
-async function sbGet(table, params='') {
-  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {headers: SB_HEADERS});
+async function sbGet(table, params='', limit=2000) {
+  // Supabase REST limita a 1000 filas por defecto — usar header Range para obtener más
+  const headers = {
+    ...SB_HEADERS,
+    'Range': '0-' + (limit - 1),
+    'Prefer': 'count=none'
+  };
+  const r = await fetch(SUPABASE_URL+'/rest/v1/'+table+'?'+params, {headers});
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -1061,8 +1067,27 @@ async function api(action, data = {}) {
 
     // ── PEDIDOS ────────────────────────────────────────────────────────────
     if (action === 'getPedidos') {
-      const rows = await sbGet('pedidos', 'select=folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por&order=consecutivo.asc&limit=2000');
-      return {ok:true, pedidos:rows};
+      const CP = 'folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por';
+      // Obtener total de pedidos para calcular el rango correcto
+      const countRes = await fetch(SUPABASE_URL+'/rest/v1/pedidos?select=consecutivo&order=consecutivo.desc&limit=1', {headers: SB_HEADERS});
+      const countData = await countRes.json();
+      const maxCons = countData.length ? (countData[0].consecutivo || 0) : 0;
+      // Ventana deslizante: siempre los últimos 1000 por consecutivo
+      const desde = Math.max(0, maxCons - 999);
+      // Traer: últimos 1000 POR CONSECUTIVO + todos los activos (por si acaso hay viejos activos)
+      const [recientes, activos] = await Promise.all([
+        sbGet('pedidos', `select=${CP}&consecutivo=gte.${desde}&order=consecutivo.asc`, 1000),
+        sbGet('pedidos', `select=${CP}&status=in.(porsurtir,surtiendo)&order=consecutivo.asc`, 500)
+      ]);
+      // Unir sin duplicados
+      const map = {};
+      [...recientes, ...activos].forEach(p => map[p.folio] = p);
+      return {ok:true, pedidos:Object.values(map).sort((a,b)=>a.consecutivo-b.consecutivo)};
+    }
+    if (action === 'getPedidoPorFolio') {
+      const rows = await sbGet('pedidos', `folio=eq.${encodeURIComponent(data.folio)}&select=folio,consecutivo,turno,cliente,notas,vendedor,status,urgente,ts_registro,ts_surtiendo,ts_surtido,ts_enviado,ts_cancelado,surtidor,rack,cancelado_por`);
+      if (!rows.length) return {ok:false, error:'Folio no encontrado'};
+      return {ok:true, pedido:rows[0]};
     }
     // Refresh parcial — solo pedidos con actividad reciente (updated_at >= since)
     if (action === 'getPedidosRecientes') {
@@ -3403,11 +3428,21 @@ async function buscarFolioAgregar() {
   const lineasDiv = document.getElementById('ag-lineas');
   if (folio.length < 2) { infoDiv.style.display='none'; formDiv.style.display='none'; lineasDiv.innerHTML=''; AG_PEDIDO=null; return; }
 
-  showLoading('Buscando...');
-  const resP = await api('getPedidos');
-  hideLoading();
-  if (resP.ok) ALL_PEDIDOS = resP.pedidos||[];
+  // Buscar primero en caché local
   let p = ALL_PEDIDOS.find(x => x.folio.trim().toUpperCase() === folio.toUpperCase());
+
+  // Si no está en caché, buscar directamente en Supabase por folio específico
+  if (!p) {
+    showLoading('Buscando...');
+    const res = await api('getPedidoPorFolio', {folio});
+    hideLoading();
+    if (res.ok && res.pedido) {
+      p = res.pedido;
+      // Agregar al caché local para futuras búsquedas
+      const idx = ALL_PEDIDOS.findIndex(x => x.folio === p.folio);
+      if (idx >= 0) ALL_PEDIDOS[idx] = p; else ALL_PEDIDOS.push(p);
+    }
+  }
 
   if (!p) { infoDiv.style.display='block'; infoDiv.style.background='#f8d7da'; infoDiv.innerHTML='❌ Folio no encontrado'; formDiv.style.display='none'; lineasDiv.innerHTML=''; AG_PEDIDO=null; return; }
   if (p.status==='cancelado') { infoDiv.style.display='block'; infoDiv.style.background='#f8d7da'; infoDiv.innerHTML='❌ Este pedido está cancelado'; formDiv.style.display='none'; AG_PEDIDO=null; return; }
