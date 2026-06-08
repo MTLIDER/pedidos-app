@@ -1115,8 +1115,8 @@ async function api(action, data = {}) {
       return {ok:true, lineas:Object.values(map)};
     }
     if (action === 'getClientes') {
-      const rows = await sbGet('pedidos', 'select=cliente&order=cliente');
-      const clientes = [...new Set(rows.map(r=>r.cliente).filter(Boolean))];
+      const rows = await sbGet('vista_clientes', 'select=cliente');
+      const clientes = rows.map(r=>r.cliente).filter(Boolean);
       return {ok:true, clientes};
     }
     if (action === 'getNextFolio') {
