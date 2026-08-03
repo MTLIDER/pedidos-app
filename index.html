@@ -2015,6 +2015,7 @@ function renderPedidos() {
     if (isVencido(p)) counts.vencido++;
     else if (isVencidoSurtido(p)) counts.vencido_surtido++;
     else if (foliosAgregados.has(p.folio)) counts.agregado++;
+    else if (p.status==='porsurtir' && tieneLineaSurtiendo(p)) counts.surtiendo++;
     else if (counts[p.status]!==undefined) counts[p.status]++;
   });
   document.getElementById('stats-row').innerHTML=Object.entries(counts).map(([k,v])=>`
@@ -2038,6 +2039,7 @@ function renderPedidos() {
   else if (FILTER_STATUS==='surtiendo') {
     pedidos = pedidos.filter(p => p.status==='surtiendo' || _foliosLinSurtiendo.has(p.folio));
   }
+  else if (FILTER_STATUS==='porsurtir') pedidos=pedidos.filter(p=>estaPorSurtirReal(p));
   else if (FILTER_STATUS!=='todos') pedidos=pedidos.filter(p=>p.status===FILTER_STATUS);
 
   if (SEARCH_Q) { const q=SEARCH_Q.toLowerCase(); pedidos=pedidos.filter(p=>p.folio.toLowerCase().includes(q)||p.cliente.toLowerCase().includes(q)); }
@@ -3546,9 +3548,29 @@ async function surtirLineaRack(id, rack, btn) {
 }
 
 // ─── ESTADO VISUAL CON AGREGADOS ─────────────────────────────────────────────
+// Un pedido "reactivado" (ya se surtio antes y volvio a porsurtir porque el
+// vendedor agrego una linea) solo sigue REALMENTE pendiente mientras tenga
+// al menos una linea en status 'porsurtir'. Si todas sus lineas ya fueron
+// tomadas, el pedido pertenece a Surtiendo, no a Por Surtir.
+function tieneLineaPendiente(p) {
+  return ALL_LINEAS.some(l => l.folio === p.folio && l.status === 'porsurtir');
+}
+function tieneLineaSurtiendo(p) {
+  return ALL_LINEAS.some(l => l.folio === p.folio && l.status === 'surtiendo');
+}
+function esReactivado(p) {
+  return p.status === 'porsurtir' && p.ts_surtido && String(p.ts_surtido).trim() !== '';
+}
+function estaPorSurtirReal(p) {
+  if (p.status !== 'porsurtir') return false;
+  if (!esReactivado(p)) return true;
+  return tieneLineaPendiente(p);
+}
+
 function getDisplayStatus(p) {
   if (p.status === 'cancelado') return p.status;
-  if (ALL_LINEAS.some(l => l.folio === p.folio && (l.status === 'porsurtir' || l.status === 'surtiendo'))) return 'agregado';
+  if (tieneLineaPendiente(p)) return 'agregado';
+  if (tieneLineaSurtiendo(p)) return 'surtiendo';
   return p.status;
 }
 
@@ -3650,6 +3672,10 @@ function renderAlmacen() {
   } else if (ALM_FILTER === 'surtiendo') {
     // Incluir pedidos en surtiendo Y pedidos con líneas en surtiendo
     pedidos = pedidos.filter(p => p.status === 'surtiendo' || foliosLineasSurtiendo.has(p.folio));
+  } else if (ALM_FILTER === 'porsurtir') {
+    // Excluir pedidos reactivados cuyas líneas ya fueron tomadas (ya no hay nada
+    // pendiente por surtir — esos aparecen en la pestaña Surtiendo)
+    pedidos = pedidos.filter(p => estaPorSurtirReal(p));
   } else if (ALM_FILTER !== 'todos') {
     pedidos = pedidos.filter(p => p.status === ALM_FILTER);
   }
