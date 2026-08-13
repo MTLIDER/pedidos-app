@@ -1149,8 +1149,19 @@ async function api(action, data = {}) {
       });
       return {ok:true, folio:data.folio, consecutivo, turno};
     }
+    if (action === 'getUrgPass') {
+      const rows = await sbGet('config', 'clave=eq.urgencia_pass&select=valor');
+      return {ok:true, definida: !!(rows[0] && rows[0].valor)};
+    }
+    if (action === 'setUrgPass') {
+      const rows = await sbGet('config', 'clave=eq.urgencia_pass&select=clave');
+      if (rows.length) await sbPatch('config', 'clave=eq.urgencia_pass', {valor:data.pass, actualizado:new Date().toISOString()});
+      else await sbPost('config', {clave:'urgencia_pass', valor:data.pass});
+      return {ok:true};
+    }
     if (action === 'marcarUrgente') {
-      const PASS = localStorage.getItem('urgencia_pass') || '010203';
+      const cfg = await sbGet('config', 'clave=eq.urgencia_pass&select=valor');
+      const PASS = (cfg[0] && cfg[0].valor) || '010203';
       if (data.pass !== PASS) return {ok:false, error:'Contraseña de urgencia incorrecta'};
       await sbPatch('pedidos', `folio=eq.${encodeURIComponent(data.folio)}`, {urgente:true, consecutivo:-1});
       return {ok:true};
@@ -1261,7 +1272,7 @@ async function api(action, data = {}) {
 
     // ── LOG ────────────────────────────────────────────────────────────────
     if (action === 'setUrgenciaPass') {
-      localStorage.setItem('urgencia_pass', data.pass); return {ok:true};
+      return await api('setUrgPass', {pass: data.pass});
     }
 
     // ── CALIDAD ────────────────────────────────────────────────────────────
@@ -3411,8 +3422,15 @@ async function eliminarTipoErrorUI(id, nombre) {
   if (res.ok) { toast('Tipo de error eliminado','success'); cargarTiposErrorAdmin(); }
   else toast(res.error,'error');
 }
-function guardarUrgPass(){
-  toast('La contraseña de urgencias está configurada en el sistema','info');
+async function guardarUrgPass(){
+  const inp = document.getElementById('cfg-urgpass');
+  const nueva = (inp.value || '').trim();
+  if (nueva.length < 4) { toast('La contraseña debe tener al menos 4 caracteres','error'); return; }
+  showLoading('Guardando contraseña...');
+  const res = await api('setUrgPass', {pass: nueva});
+  hideLoading();
+  if (res.ok) { inp.value = ''; toast('Contraseña de urgencias actualizada','success'); }
+  else toast(res.error || 'No se pudo guardar la contraseña','error');
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -3604,16 +3622,11 @@ function buildGlobalQueue() {
 async function marcarUrgente(folio) {
   const pass = prompt('Contraseña de urgencia:');
   if (!pass) return;
-  const PASS_FIJA = '010203';
-  if (pass !== PASS_FIJA) { toast('Contraseña de urgencia incorrecta','error'); return; }
   showLoading('Adelantando pedido...');
   const res = await api('marcarUrgente',{folio, pass});
   hideLoading();
   if (res.ok) { toast(`Pedido ${folio} adelantado en cola`,'success'); closeModal(); await cargarPedidos(); }
-  else {
-    toast(`Pedido ${folio} adelantado en cola`,'success');
-    closeModal(); await cargarPedidos();
-  }
+  else { toast(res.error || 'No se pudo adelantar el pedido','error'); }
 }
 
 // ─── PANTALLA ALMACÉN ────────────────────────────────────────────────────────
